@@ -8,6 +8,7 @@ import com.randwise.app.data.model.AccountType
 import com.randwise.app.data.model.Budget
 import com.randwise.app.data.model.Category
 import com.randwise.app.data.model.CategoryRule
+import com.randwise.app.data.model.ChatMessageEntity
 import com.randwise.app.data.model.ConsentRecord
 import com.randwise.app.data.model.Debt
 import com.randwise.app.data.model.Goal
@@ -16,6 +17,7 @@ import com.randwise.app.data.model.Transaction
 import com.randwise.app.data.model.TxSource
 import com.randwise.app.data.model.TxType
 import com.randwise.app.data.model.UserProfile
+import com.randwise.app.domain.CategoryLearning
 import com.randwise.app.domain.FinanceSnapshot
 import com.randwise.app.domain.MerchantText
 import com.randwise.app.domain.PayCycle
@@ -46,6 +48,9 @@ data class ImportRow(
     val include: Boolean,
 )
 
+/** Coach turns kept on the device; older ones are trimmed. */
+const val CHAT_HISTORY_LIMIT = 200
+
 class FinanceRepository(private val db: RandWiseDatabase) {
 
     private val profiles = db.profileDao()
@@ -60,6 +65,19 @@ class FinanceRepository(private val db: RandWiseDatabase) {
 
     val profile: Flow<UserProfile?> = profiles.observe()
     val consentHistory: Flow<List<ConsentRecord>> = consents.observeAll()
+
+    private val chat = db.chatDao()
+
+    // ---------- Coach chat history (encrypted, bounded, erased with everything else) ----------
+
+    suspend fun chatHistory(): List<ChatMessageEntity> = chat.all()
+
+    suspend fun saveChat(message: ChatMessageEntity) {
+        chat.insert(message)
+        chat.trim(CHAT_HISTORY_LIMIT)
+    }
+
+    suspend fun clearChat() = chat.clear()
 
     /** POPIA: every grant/withdrawal is logged with the notice version the user saw. */
     suspend fun recordConsent(type: String, granted: Boolean, policyVersion: String) =
@@ -175,6 +193,21 @@ class FinanceRepository(private val db: RandWiseDatabase) {
     }
 
     suspend fun updateTransaction(t: Transaction) = txs.update(t)
+
+    /**
+     * Saves a correction and optionally teaches it: applies the category to the same merchant's other
+     * transactions and/or stores a rule used by future imports. Returns how many others changed.
+     */
+    suspend fun recategorize(t: Transaction, categoryId: Long?, note: String, applyToSimilar: Boolean, rememberRule: Boolean): Int = db.withTransaction {
+        txs.update(t.copy(categoryId = categoryId, note = note))
+        if (categoryId == null) return@withTransaction 0
+        val pattern = CategoryLearning.patternFor(t) ?: return@withTransaction 0
+        if (rememberRule) categories.upsertRule(CategoryRule(pattern = pattern, categoryId = categoryId))
+        if (!applyToSimilar) return@withTransaction 0
+        val similar = CategoryLearning.similar(txs.getAll(), t, categoryId)
+        similar.forEach { txs.update(it.copy(categoryId = categoryId)) }
+        similar.size
+    }
 
     suspend fun deleteTransaction(t: Transaction) {
         if (t.transferGroupId != null) txs.deleteTransferGroup(t.transferGroupId) else txs.delete(t)

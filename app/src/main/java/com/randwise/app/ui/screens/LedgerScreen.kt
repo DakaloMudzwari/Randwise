@@ -42,6 +42,8 @@ import com.randwise.app.core.Money
 import com.randwise.app.data.model.Bucket
 import com.randwise.app.data.model.Transaction
 import com.randwise.app.data.model.TxType
+import com.randwise.app.domain.CategoryLearning
+import androidx.compose.foundation.clickable
 import com.randwise.app.ui.FinanceViewModel
 import com.randwise.app.ui.Gutter
 import com.randwise.app.ui.components.EmptyState
@@ -114,6 +116,8 @@ fun LedgerScreen(vm: FinanceViewModel, accountId: Long, onBack: () -> Unit) {
     editing?.let { t ->
         var cat by remember(t.id) { mutableStateOf(t.categoryId) }
         var note by remember(t.id) { mutableStateOf(t.note) }
+        var applySimilar by remember(t.id) { mutableStateOf(true) }
+        var rememberRule by remember(t.id) { mutableStateOf(true) }
         AlertDialog(
             onDismissRequest = { editing = null },
             title = { Text(t.merchant, maxLines = 2) },
@@ -125,14 +129,36 @@ fun LedgerScreen(vm: FinanceViewModel, accountId: Long, onBack: () -> Unit) {
                         val relevant = if (t.type == TxType.INCOME) s.categories.filter { it.bucket == Bucket.INCOME } else s.categories.filter { it.bucket != Bucket.INCOME }
                         CategoryDropdown(relevant, cat, { cat = it })
                     }
+                    // Learning from corrections: offer to fix the same merchant elsewhere and remember it.
+                    val changed = cat != t.categoryId && cat != null
+                    val similarCount = remember(cat) { CategoryLearning.similar(s.transactions, t, cat).size }
+                    val pattern = CategoryLearning.patternFor(t)
+                    if (changed && pattern != null) {
+                        if (similarCount > 0) CheckRow(applySimilar, { applySimilar = it }, "Also update $similarCount other ${pattern.lowercase()} transaction${if (similarCount == 1) "" else "s"}")
+                        CheckRow(rememberRule, { rememberRule = it }, "Always categorise ${pattern.lowercase()} this way when importing")
+                    }
                     RWTextField(note, { note = it.take(120) }, "Note")
                     if (t.transferGroupId != null) Text("Deleting removes both sides of this transfer.", style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
                 }
             },
-            confirmButton = { TextButton({ vm.updateTransaction(t.copy(categoryId = cat, note = note)); editing = null }) { Text("Save") } },
+            confirmButton = {
+                TextButton({
+                    if (cat != t.categoryId) vm.recategorize(t, cat, note, applySimilar, rememberRule)
+                    else vm.updateTransaction(t.copy(note = note))
+                    editing = null
+                }) { Text("Save") }
+            },
             dismissButton = { TextButton({ vm.deleteTransaction(t); editing = null }) { Text("Delete", color = Palette.Coral) } },
         )
     }
 }
 
 private val HDR = DateTimeFormatter.ofPattern("EEE d MMM")
+
+@Composable
+private fun CheckRow(checked: Boolean, onChange: (Boolean) -> Unit, label: String) {
+    Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }, verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.material3.Checkbox(checked, onChange)
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+    }
+}

@@ -6,6 +6,7 @@ import com.randwise.app.data.model.Debt
 import com.randwise.app.data.model.RecurringBill
 import com.randwise.app.data.model.Transaction
 import com.randwise.app.data.model.TxType
+import com.randwise.app.domain.CategoryLearning
 import com.randwise.app.domain.Ledger
 import com.randwise.app.domain.PayCycle
 import com.randwise.app.domain.engine.AffordabilityEngine
@@ -194,5 +195,25 @@ class PercentMinimumTest {
         val plan = DebtPlanner.plan(listOf(card), 50_000, DebtStrategy.AVALANCHE)
         assertTrue(plan.feasible)
         assertEquals(1_000_000 + plan.totalInterest, plan.totalPaid)
+    }
+}
+
+class CategoryLearningTest {
+    private val d = LocalDate.of(2026, 10, 1)
+
+    @Test
+    fun `finds the same merchant across description noise`() {
+        val corrected = tx(1, TxType.EXPENSE, 5_000, d, "POS PURCHASE VIDA E CAFFE 4411", cat = null)
+        val all = listOf(
+            corrected,
+            tx(1, TxType.EXPENSE, 4_500, d.plusDays(3), "VIDA E CAFFE 9902", cat = null),
+            tx(1, TxType.EXPENSE, 4_800, d.plusDays(5), "CARD PURCHASE VIDA E CAFFE", cat = 9),
+            tx(1, TxType.EXPENSE, 4_800, d.plusDays(6), "VIDA E CAFFE", cat = 7), // already correct
+            tx(1, TxType.REFUND, 4_800, d.plusDays(6), "VIDA E CAFFE", cat = null), // refunds count as spend too
+            tx(1, TxType.INCOME, 4_800, d.plusDays(7), "VIDA E CAFFE", cat = null), // income: different direction
+            tx(1, TxType.EXPENSE, 9_000, d.plusDays(8), "CHECKERS", cat = null),
+        )
+        assertEquals(3, CategoryLearning.similar(all, corrected, 7).size)
+        assertEquals("VIDA CAFFE", CategoryLearning.patternFor(corrected))
     }
 }

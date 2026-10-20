@@ -96,6 +96,15 @@ class FinanceViewModel(private val container: AppContainer) : ViewModel() {
         launchSafe("Transfer recorded") { repo.addTransfer(fromId, toId, amount, date, note) }
 
     fun updateTransaction(t: Transaction) = launchSafe { repo.updateTransaction(t) }
+
+    fun recategorize(t: Transaction, categoryId: Long?, note: String, applyToSimilar: Boolean, rememberRule: Boolean) = viewModelScope.launch {
+        runCatching { repo.recategorize(t, categoryId, note, applyToSimilar, rememberRule) }
+            .onSuccess { n ->
+                val learned = if (rememberRule && categoryId != null) " Future imports will follow it." else ""
+                _messages.tryEmit(if (n > 0) "Updated $n similar transaction${if (n == 1) "" else "s"}.$learned" else "Saved.$learned")
+            }
+            .onFailure { _messages.tryEmit(it.message ?: "Couldn't save") }
+    }
     fun deleteTransaction(t: Transaction) = launchSafe("Transaction deleted") { repo.deleteTransaction(t) }
 
     fun addAccount(name: String, type: AccountType, opening: Long, include: Boolean) =

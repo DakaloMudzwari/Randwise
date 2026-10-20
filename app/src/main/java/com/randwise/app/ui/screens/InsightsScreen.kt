@@ -150,6 +150,11 @@ private fun CoachTab(vm: FinanceViewModel, coach: CoachViewModel) {
                         if (settings.consentAiInterpretation) "Gemini · anonymised totals only" else "On-device · fully private",
                         if (settings.consentAiInterpretation) Palette.Violet else Palette.Mint,
                     )
+                    if (state.messages.isNotEmpty() && !state.sending) {
+                        androidx.compose.material3.TextButton({ coach.clear() }) {
+                            Text("Clear conversation", color = Palette.TextDim, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
                 }
             }
             if (state.messages.isEmpty()) {
