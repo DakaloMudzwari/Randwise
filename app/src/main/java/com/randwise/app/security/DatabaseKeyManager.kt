@@ -51,6 +51,12 @@ class DatabaseKeyManager(private val context: Context) {
         return passphrase
     }
 
+    /** Right to erasure: forget the wrapped key and delete the Keystore entry so old files are unreadable. */
+    fun destroy() {
+        prefs.edit().clear().commit()
+        runCatching { KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }.deleteEntry(ALIAS) }
+    }
+
     private fun unwrap(wrapped: ByteArray, iv: ByteArray): ByteArray {
         val cipher = Cipher.getInstance(TRANSFORM)
         cipher.init(Cipher.DECRYPT_MODE, keystoreKey(), GCMParameterSpec(128, iv))

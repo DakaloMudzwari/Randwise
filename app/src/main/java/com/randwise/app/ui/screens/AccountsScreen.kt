@@ -143,7 +143,7 @@ fun AccountsScreen(vm: FinanceViewModel, onImport: (Long) -> Unit, onLedger: (Lo
                         "on this phone and is stored encrypted. You can withdraw consent and erase everything in the Vault.",
                 )
             },
-            confirmButton = { TextButton({ vm.updateSettings(context) { it.copy(consentStatementUpload = true) }; consentAsk = false; startImport() }) { Text("I agree") } },
+            confirmButton = { TextButton({ vm.setStatementConsent(context, true); consentAsk = false; startImport() }) { Text("I agree") } },
             dismissButton = { TextButton({ consentAsk = false }) { Text("Not now") } },
         )
     }

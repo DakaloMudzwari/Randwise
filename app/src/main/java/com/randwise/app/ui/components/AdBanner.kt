@@ -18,7 +18,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.AdView
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.randwise.app.BuildConfig
+import com.randwise.app.ads.AdsConsent
 import com.randwise.app.ui.theme.RW
 
 /**
@@ -28,6 +31,14 @@ import com.randwise.app.ui.theme.RW
  */
 @Composable
 fun AdBanner(modifier: Modifier = Modifier) {
+    // No ad request until the UMP consent flow allows it.
+    val canRequest by AdsConsent.canRequestAds.collectAsStateWithLifecycle()
+    if (!canRequest) return
+    AdBannerLoaded(modifier)
+}
+
+@Composable
+private fun AdBannerLoaded(modifier: Modifier) {
     val context = LocalContext.current
     val widthDp = LocalConfiguration.current.screenWidthDp - 32
     val adView = remember {

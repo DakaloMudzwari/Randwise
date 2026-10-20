@@ -5,4 +5,5 @@
     <string name="unlock_title">Unlock RandWise</string>
     <string name="unlock_subtitle">Confirm it\'s you to view your finances</string>
     <string name="cancel">Cancel</string>
+    <string name="use_app_password">Use app password</string>
 </resources>

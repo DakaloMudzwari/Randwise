@@ -15,6 +15,8 @@ data class Settings(
     val billReminders: Boolean = true,
     val gatewayUrl: String = BuildConfig.DEFAULT_GATEWAY_URL,
     val showAds: Boolean = true,
+    /** FLAG_SECURE: blocks screenshots, screen recording and the recent-apps thumbnail. */
+    val hideFromScreenshots: Boolean = true,
 )
 
 /** Non-financial app settings. Financial data lives only in the encrypted database. */
@@ -30,6 +32,7 @@ class AppPreferences(context: Context) {
         billReminders = prefs.getBoolean("reminders", true),
         gatewayUrl = prefs.getString("gateway", BuildConfig.DEFAULT_GATEWAY_URL) ?: BuildConfig.DEFAULT_GATEWAY_URL,
         showAds = prefs.getBoolean("ads", true),
+        hideFromScreenshots = prefs.getBoolean("secure_window", true),
     )
 
     fun update(transform: (Settings) -> Settings) {
@@ -41,6 +44,7 @@ class AppPreferences(context: Context) {
             .putBoolean("reminders", s.billReminders)
             .putString("gateway", s.gatewayUrl)
             .putBoolean("ads", s.showAds)
+            .putBoolean("secure_window", s.hideFromScreenshots)
             .apply()
         state.value = s
     }

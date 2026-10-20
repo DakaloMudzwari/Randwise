@@ -361,6 +361,9 @@ fun RWTextField(
     suffix: String? = null,
     trailing: (@Composable () -> Unit)? = null,
     readOnly: Boolean = false,
+    /** Masks the input (PINs/passwords). */
+    secret: Boolean = false,
+    isError: Boolean = false,
 ) {
     OutlinedTextField(
         value = value,
@@ -368,6 +371,8 @@ fun RWTextField(
         label = { Text(label) },
         singleLine = true,
         readOnly = readOnly,
+        isError = isError,
+        visualTransformation = if (secret) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         shape = FieldShape,
         colors = rwFieldColors(),
         prefix = prefix?.let { { Text(it) } },

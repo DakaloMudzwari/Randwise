@@ -6,7 +6,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.randwise.app.AppContainer
 import com.randwise.app.RandWiseApplication
+import com.randwise.app.data.Privacy
 import com.randwise.app.data.Settings
+import com.randwise.app.data.model.ConsentRecord
+import com.randwise.app.security.PasscodeKind
+import com.randwise.app.security.PasscodeRules
+import com.randwise.app.security.VerifyResult
 import com.randwise.app.data.model.AccountType
 import com.randwise.app.data.model.Account
 import com.randwise.app.data.model.Bucket
@@ -149,9 +154,54 @@ class FinanceViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    /** POPIA right to erasure: wipe database rows and app settings. */
-    fun purgeAll() = launchSafe("All local data erased") {
-        withContext(Dispatchers.IO) { repo.purgeAll() }
-        container.preferences.reset()
+    /** POPIA right to erasure: database file, encryption key, password, settings and caches — then restart. */
+    fun purgeAll() = viewModelScope.launch {
+        container.eraser.eraseEverything()
+        container.eraser.restart()
+    }
+
+    // ---------- App password ----------
+
+    val passcodeKind: StateFlow<PasscodeKind?> = container.passcode.kind
+
+    /**
+     * Sets or changes the app password. When one exists, [current] must match first.
+     * Returns a user-facing error, or null on success.
+     */
+    suspend fun setPasscode(current: String?, new: String, kind: PasscodeKind): String? = withContext(Dispatchers.Default) {
+        PasscodeRules.validate(kind, new)?.let { return@withContext it }
+        if (container.passcode.isSet) {
+            when (val r = container.passcode.verify((current ?: "").toCharArray())) {
+                VerifyResult.Success -> Unit
+                is VerifyResult.Wrong -> return@withContext "Current ${if (passcodeKind.value == PasscodeKind.PIN) "PIN" else "password"} is incorrect"
+                is VerifyResult.LockedOut -> return@withContext "Too many attempts — try again shortly"
+            }
+        }
+        container.passcode.set(new.toCharArray(), kind)
+        _messages.tryEmit("App ${if (kind == PasscodeKind.PIN) "PIN" else "password"} saved")
+        null
+    }
+
+    suspend fun removePasscode(current: String): String? = withContext(Dispatchers.Default) {
+        when (container.passcode.verify(current.toCharArray())) {
+            VerifyResult.Success -> { container.passcode.clear(); _messages.tryEmit("App password removed"); null }
+            is VerifyResult.Wrong -> "That's not right"
+            is VerifyResult.LockedOut -> "Too many attempts — try again shortly"
+        }
+    }
+
+    // ---------- POPIA consent ----------
+
+    val consentHistory: StateFlow<List<ConsentRecord>> = repo.consentHistory
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun setStatementConsent(context: Context, granted: Boolean) {
+        updateSettings(context) { it.copy(consentStatementUpload = granted) }
+        launchSafe { repo.recordConsent(Privacy.Consent.STATEMENTS, granted, Privacy.VERSION) }
+    }
+
+    fun setAiConsent(context: Context, granted: Boolean) {
+        updateSettings(context) { it.copy(consentAiInterpretation = granted) }
+        launchSafe { repo.recordConsent(Privacy.Consent.AI, granted, Privacy.VERSION) }
     }
 }

@@ -13,7 +13,9 @@ import com.randwise.app.data.AppPreferences
 import com.randwise.app.data.FinanceRepository
 import com.randwise.app.data.db.RandWiseDatabase
 import com.randwise.app.importer.DocumentExtractor
+import com.randwise.app.security.DataEraser
 import com.randwise.app.security.DatabaseKeyManager
+import com.randwise.app.security.PasscodeManager
 import com.randwise.app.work.BillReminderWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +28,8 @@ class AppContainer(private val context: Context) {
     val preferences = AppPreferences(context)
     val database: RandWiseDatabase by lazy { RandWiseDatabase.open(context, DatabaseKeyManager(context).getOrCreateSqlCipherKey()) }
     val repository: FinanceRepository by lazy { FinanceRepository(database) }
+    val passcode = PasscodeManager(context)
+    val eraser by lazy { DataEraser(context, this) }
     val extractor by lazy { DocumentExtractor(context) }
     val coachClient by lazy { CoachClient() }
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -42,7 +46,7 @@ class RandWiseApplication : Application() {
         scheduleReminders(container.preferences.settings.value.billReminders)
         // Open (and key) the encrypted database off the main thread while the first frame renders.
         container.appScope.launch(Dispatchers.IO) { runCatching { container.database.openHelper.writableDatabase } }
-        container.appScope.launch(Dispatchers.IO) { MobileAds.initialize(this@RandWiseApplication) }
+        // MobileAds is initialised by AdsConsent only once the UMP consent flow allows it.
     }
 
     fun scheduleReminders(enabled: Boolean) {

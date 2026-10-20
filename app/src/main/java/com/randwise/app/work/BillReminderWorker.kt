@@ -49,11 +49,19 @@ class BillReminderWorker(context: Context, params: WorkerParameters) : Coroutine
             applicationContext, 0, Intent(applicationContext, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        // On a locked screen show only a neutral line — bill names and amounts stay private.
+        val publicVersion = NotificationCompat.Builder(applicationContext, CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_randwise)
+            .setContentTitle("RandWise")
+            .setContentText("You have a money reminder")
+            .build()
         val n = NotificationCompat.Builder(applicationContext, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_randwise)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
             .setContentIntent(intent)
             .setAutoCancel(true)
             .build()
