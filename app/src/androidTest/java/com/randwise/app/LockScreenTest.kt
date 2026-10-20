@@ -40,6 +40,8 @@ class LockScreenTest {
         compose.onNodeWithContentDescription("6 digits entered").assertIsDisplayed()
         compose.onNodeWithText("Unlock").performClick()
         assertEquals("482915", submitted)
+        // Digits are cleared immediately so they never linger on screen.
+        compose.onNodeWithContentDescription("0 digits entered").assertIsDisplayed()
     }
 
     @Test

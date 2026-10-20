@@ -38,7 +38,8 @@ backend/RandWise.Gateway/           ASP.NET Core minimal API → Google Gemini
 | Eq. 1 Safe-to-spend | `SafeToSpendEngine.compute` |
 | Eq. 2 Velocity projection (linear + 7-day weighted) | `VelocityEngine` |
 | §5 Hybrid AI (facts on-device, Gemini only explains) | `ai/ContextBuilder.kt`, `backend/` |
-| §7 POPIA & security | SQLCipher, BiometricPrompt gate, consent toggles, CSV/PDF export, purge, backups disabled |
+| §7 POPIA & security | SQLCipher, app PIN/password + biometrics, consent log, privacy notice, CSV/PDF export, full erasure, backups disabled — see below |
+| Pay & bills | Monthly, fortnightly or weekly pay; weekly, monthly or yearly bills (`domain/PayCycle.kt`) |
 
 All money is `Long` cents. Percentages and APRs are basis points. No floating point touches a financial total.
 
@@ -47,11 +48,35 @@ All money is `Long` cents. Percentages and APRs are basis points. No floating po
 Requirements: JDK 17, Android SDK 35.
 
 ```bash
-./gradlew :app:testDebugUnitTest   # JUnit 5 engine/parser tests
+./gradlew :app:testDebugUnitTest   # JUnit 5: engines, parsers, pay/bill frequencies, password hashing
 ./gradlew :app:assembleDebug       # app/build/outputs/apk/debug/app-debug.apk
+
+# Instrumented tests (Room migration, lock screen) on an emulator, without touching your normal install:
+./gradlew :app:connectedDebugAndroidTest -PrwPreview -PrwAbi=x86_64
 ```
 
+Build flags: `-PrwPreview` installs a side-by-side `com.randwise.app.preview` with its own data;
+`-PrwAbi=x86_64` packages a single CPU architecture (53 MB instead of 97 MB) for space-constrained emulators.
+
 Or open the folder in Android Studio and run the `app` configuration.
+
+**Database migrations:** the schema is versioned with exported JSON in `app/schemas`. Every entity change needs
+a new version, a migration (auto or manual) and a case in `MigrationTest` — never destructive fallback.
+
+## Security & privacy
+
+- **App password** — users can set a 6–10 digit PIN or an 8+ character password (Vault, or the last onboarding step).
+  Only a salted PBKDF2-HMAC-SHA256 hash (120k iterations) is stored. Five free attempts, then an escalating lockout
+  (30 s → 15 min) that survives restarts. Fingerprint/face is an optional shortcut. A forgotten password can only be
+  reset by erasing the app's data — by design there is no recovery path.
+- **Encryption at rest** — SQLCipher with a random 256-bit key wrapped by an Android Keystore AES-GCM key.
+- **Screen privacy** — `FLAG_SECURE` (on by default) blocks screenshots and the recent-apps preview; reminder
+  notifications show no amounts on the lock screen.
+- **Erasure** — "Erase all local data" deletes the database file, destroys the Keystore key, clears the password,
+  settings and caches, then restarts the app.
+- **POPIA** — versioned privacy notice in-app (`data/Privacy.kt`), timestamped consent history, explicit consent
+  before statements are read and before anonymised totals go offshore to Gemini.
+- **Ads** — Google UMP consent runs before the Ads SDK initialises or any banner loads.
 
 ## AI coach gateway
 
@@ -69,6 +94,11 @@ behind **HTTPS** and enter its URL. Cleartext is only permitted to `10.0.2.2`/`l
 
 The gateway re-sanitises every payload, enforces a fixed system prompt and a JSON response schema,
 rate-limits per IP and never logs request bodies.
+
+**Client key:** set `RANDWISE_CLIENT_KEY` on the gateway and the same value as `randwise.gatewayClientKey=…` in your
+git-ignored `local.properties`; calls without it get `401`. The key ships inside the APK, so treat it as a speed bump —
+add Play Integrity or Firebase App Check before scaling. A `Dockerfile` is included for HTTPS hosting
+(Cloud Run, Azure Container Apps, or behind a reverse proxy).
 
 ## Design — "Midnight"
 
@@ -99,11 +129,14 @@ the UI — placed only at the end of Home and Insights → Trends, away from nav
 financial cards, onboarding, import or settings.
 
 The build uses Google's **test** AdMob IDs (`app/build.gradle.kts`). Before release, replace them with your own
-and add a consent flow (Google UMP SDK) for personalised ads.
+and configure your consent message in the AdMob console (the UMP flow is already wired in).
 
 ## Before shipping
 
-- Replace AdMob test IDs; integrate the UMP consent SDK.
-- Deploy the gateway over HTTPS with an auth mechanism (e.g. Play Integrity / App Check tokens).
-- Room schema is version 1 with `exportSchema`; add migrations for any entity change.
-- Add Compose UI tests and run a closed beta (FDS Phase 6).
+- Replace AdMob test IDs and set up the UMP consent message in AdMob.
+- Deploy the gateway over HTTPS; add Play Integrity / App Check on top of the client key.
+- Have the privacy notice reviewed (Information Officer registration, POPIA s72 cross-border wording, FAIS boundary).
+- Translations (Afrikaans, isiZulu…) — move UI strings to `strings.xml` and engage translators.
+- Crash reporting (Crashlytics or Sentry) with PII scrubbing — needs your project/DSN.
+- Ledger P0 items: DB-side balance totals, statement reconciliation, transfer-pair matching, encrypted backup.
+- Closed beta (FDS Phase 6).

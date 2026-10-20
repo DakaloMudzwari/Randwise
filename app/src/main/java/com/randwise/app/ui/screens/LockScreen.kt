@@ -87,7 +87,13 @@ fun LockScreen(
     LaunchedEffect(lockedUntil) { while (lockedUntil > System.currentTimeMillis()) { now = System.currentTimeMillis(); delay(500) }; now = System.currentTimeMillis() }
     LaunchedEffect(error) { if (error != null) entry = "" }
 
-    fun submit() { if (entry.isNotEmpty() && lockedSecs == 0L && !checking) onSubmit(entry.toCharArray()) }
+    // Clear the field as soon as it's submitted so digits never linger on screen while hashing runs.
+    fun submit() {
+        if (entry.isNotEmpty() && lockedSecs == 0L && !checking) {
+            onSubmit(entry.toCharArray())
+            entry = ""
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         AuroraBackground(intensity = 1.2f)
