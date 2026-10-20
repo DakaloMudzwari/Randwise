@@ -10,3 +10,4 @@ captures/
 backend/**/bin/
 backend/**/obj/
 backend/**/appsettings.Development.json
+.vscode/

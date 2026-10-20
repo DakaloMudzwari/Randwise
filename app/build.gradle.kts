@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -16,6 +18,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // AdMob: Google's published TEST ids. Replace with your own before release.
         manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347511713"
@@ -24,7 +27,7 @@ android {
         buildConfigField("String", "DEFAULT_GATEWAY_URL", "\"http://10.0.2.2:5080\"")
         // Gateway client key from the git-ignored local.properties (randwise.gatewayClientKey=...) or a
         // -P property in CI. Empty means the gateway is running without a key (local development).
-        val localProps = java.util.Properties().apply {
+        val localProps = Properties().apply {
             rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
         }
         val clientKey = (project.findProperty("randwise.gatewayClientKey") as String?) ?: localProps.getProperty("randwise.gatewayClientKey", "")
@@ -60,6 +63,9 @@ android {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES")
     }
 }
+
+// Room MigrationTestHelper reads the exported schemas as test assets.
+android.sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
@@ -102,4 +108,11 @@ dependencies {
 
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
