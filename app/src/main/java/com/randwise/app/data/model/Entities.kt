@@ -155,7 +155,32 @@ data class Debt(
     val balanceMinor: Long,
     /** Annual interest rate in basis points (21.75% = 2175). */
     val aprBp: Int,
+    /** Fixed minimum (or the floor when [minPaymentBp] is set). */
     val minPaymentMinor: Long,
+    /**
+     * SA credit cards and store accounts usually require a % of the outstanding balance each month
+     * (e.g. 3% = 300), with [minPaymentMinor] as the floor. 0 = fixed instalment (loans).
+     */
+    @ColumnInfo(defaultValue = "0") val minPaymentBp: Int = 0,
+) {
+    /** Minimum due on [balance]: the larger of the floor and the percentage, never more than the balance. */
+    fun minimumFor(balance: Long): Long {
+        val pct = if (minPaymentBp > 0) com.randwise.app.core.Money.applyBasisPoints(balance, minPaymentBp.toLong()) else 0L
+        return maxOf(minPaymentMinor, pct).coerceAtMost(balance.coerceAtLeast(0))
+    }
+}
+
+/** A saved coach conversation turn (kept in the encrypted database; erased with everything else). */
+@Entity(tableName = "chat_messages")
+data class ChatMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** USER, GEMINI or LOCAL. */
+    val source: String,
+    val text: String,
+    /** Newline-separated highlights. */
+    val highlights: String = "",
+    val note: String? = null,
+    val timestamp: Long,
 )
 
 @Entity(tableName = "goals")

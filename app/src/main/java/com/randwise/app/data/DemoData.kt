@@ -106,9 +106,9 @@ object DemoData {
             RecurringBill(name = "Medical aid", merchantPattern = "DISCOVERY HEALTH", expectedAmountMinor = 312_000, dueDay = pendingDay, isConfirmed = true),
         )
         val debts = listOf(
-            Debt(name = "Credit card", balanceMinor = 820_000, aprBp = 2_075, minPaymentMinor = 41_000),
+            Debt(name = "Credit card", balanceMinor = 820_000, aprBp = 2_075, minPaymentMinor = 15_000, minPaymentBp = 300),
             Debt(name = "Car loan", balanceMinor = 9_450_000, aprBp = 1_250, minPaymentMinor = 365_000),
-            Debt(name = "Store account", balanceMinor = 310_000, aprBp = 2_400, minPaymentMinor = 22_000),
+            Debt(name = "Store account", balanceMinor = 310_000, aprBp = 2_400, minPaymentMinor = 10_000, minPaymentBp = 500),
         )
         val goals = listOf(
             Goal(name = "Emergency fund", targetMinor = 6_000_000, savedMinor = 1_250_000, isEmergencyFund = true),

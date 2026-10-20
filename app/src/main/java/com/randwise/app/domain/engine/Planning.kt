@@ -37,7 +37,7 @@ object DebtPlanner {
         val payoffMonth = mutableMapOf<Long, Int>()
         var totalPaid = 0L
         var month = 0
-        val minimumsTotal = order.sumOf { it.minPaymentMinor }
+        val minimumsTotal = order.sumOf { it.minimumFor(it.balanceMinor) }
         val budget = maxOf(monthlyBudget, minimumsTotal)
 
         while (balance.values.any { it > 0 } && month < MAX_MONTHS) {
@@ -53,7 +53,8 @@ object DebtPlanner {
             for (d in order) {
                 val b = balance.getValue(d.id)
                 if (b <= 0) continue
-                val pay = minOf(d.minPaymentMinor, b, available)
+                // Percentage minimums shrink as the balance falls (SA card/store accounts).
+                val pay = minOf(d.minimumFor(b), available)
                 balance[d.id] = b - pay
                 available -= pay
                 totalPaid += pay

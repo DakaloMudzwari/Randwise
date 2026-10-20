@@ -63,6 +63,32 @@ class MigrationTest {
         }
     }
 
+    @Test
+    fun migrate2To3_keepsDebtsAndAddsChatTable() {
+        helper.createDatabase(DB, 2).apply {
+            execSQL("INSERT INTO debts (id, name, balanceMinor, aprBp, minPaymentMinor) VALUES (1, 'Card', 820000, 2075, 41000)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(DB, 3, true)
+        db.query("SELECT balanceMinor, minPaymentMinor, minPaymentBp FROM debts WHERE id = 1").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals(820_000L, c.getLong(0))
+            assertEquals(41_000L, c.getLong(1))
+            assertEquals(0, c.getInt(2)) // existing debts stay fixed-instalment
+        }
+        db.query("SELECT COUNT(*) FROM chat_messages").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
+    }
+
+    @Test
+    fun migrate1To3_fullChain() {
+        helper.createDatabase(DB, 1).apply {
+            execSQL("INSERT INTO accounts (id, name, type, openingBalanceMinor, includeInSafeToSpend, archived) VALUES (1, 'Cheque', 'CHEQUE', 500000, 1, 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(DB, 3, true)
+        db.query("SELECT openingBalanceMinor FROM accounts WHERE id = 1").use { c -> assertTrue(c.moveToFirst()); assertEquals(500_000L, c.getLong(0)) }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

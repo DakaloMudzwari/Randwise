@@ -176,8 +176,8 @@ fun OnboardingScreen(vm: FinanceViewModel) {
                             GlassCard {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text("Weekend payday → Friday", style = MaterialTheme.typography.titleSmall)
-                                        Text("Most SA employers pay early when the date falls on a weekend", style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
+                                        Text("Weekend or holiday → day before", style = MaterialTheme.typography.titleSmall)
+                                        Text("Most SA employers pay on the last business day before a weekend or public holiday", style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
                                     }
                                     Switch(weekendAdjust, { weekendAdjust = it })
                                 }

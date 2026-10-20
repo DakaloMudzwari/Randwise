@@ -299,7 +299,7 @@ fun SettingsScreen(vm: FinanceViewModel) {
 }
 
 private fun payLabel(p: UserProfile): String = when (p.payFrequency) {
-    PayFrequency.MONTHLY -> "Paid monthly · day ${p.payday}${if (p.adjustPaydayForWeekend) " · Fri if weekend" else ""}"
+    PayFrequency.MONTHLY -> "Paid monthly · day ${p.payday}${if (p.adjustPaydayForWeekend) " · earlier if weekend/holiday" else ""}"
     PayFrequency.FORTNIGHTLY -> "Paid fortnightly"
     PayFrequency.WEEKLY -> "Paid weekly"
 }
@@ -502,7 +502,7 @@ private fun ProfileDialog(p: UserProfile, onDismiss: () -> Unit, onSave: (UserPr
                 MoneyField(income, { income = it }, "Take-home per payday")
                 if (freqs[freq] == PayFrequency.MONTHLY) {
                     RWTextField(payday, { payday = it.filter(Char::isDigit).take(2) }, "Payday (day of month)", keyboardType = KeyboardType.Number)
-                    Row(verticalAlignment = Alignment.CenterVertically) { Text("Friday if weekend", Modifier.weight(1f)); Switch(weekend, { weekend = it }) }
+                    Row(verticalAlignment = Alignment.CenterVertically) { Text("Pay earlier on weekends & holidays", Modifier.weight(1f)); Switch(weekend, { weekend = it }) }
                 } else {
                     DateField(anchor, { anchor = it }, label = "Most recent payday")
                 }

@@ -178,3 +178,21 @@ class BehaviorTest {
         assertEquals(15_000, report.feeTotal)
     }
 }
+
+class PercentMinimumTest {
+    @Test
+    fun `percentage minimum with a floor`() {
+        val card = Debt(id = 1, name = "Card", balanceMinor = 1_000_000, aprBp = 2_075, minPaymentMinor = 15_000, minPaymentBp = 300)
+        assertEquals(30_000, card.minimumFor(1_000_000)) // 3% of R10 000
+        assertEquals(15_000, card.minimumFor(200_000))   // 3% = R60 < R150 floor
+        assertEquals(8_000, card.minimumFor(8_000))      // never more than what's owed
+    }
+
+    @Test
+    fun `planner handles shrinking percentage minimums`() {
+        val card = Debt(id = 1, name = "Card", balanceMinor = 1_000_000, aprBp = 2_075, minPaymentMinor = 15_000, minPaymentBp = 300)
+        val plan = DebtPlanner.plan(listOf(card), 50_000, DebtStrategy.AVALANCHE)
+        assertTrue(plan.feasible)
+        assertEquals(1_000_000 + plan.totalInterest, plan.totalPaid)
+    }
+}

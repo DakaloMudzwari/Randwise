@@ -4,7 +4,6 @@ import com.randwise.app.data.model.BillFrequency
 import com.randwise.app.data.model.PayFrequency
 import com.randwise.app.data.model.RecurringBill
 import com.randwise.app.data.model.UserProfile
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
@@ -59,18 +58,13 @@ data class PayCycle(
     fun next(): PayCycle = forDate(nextPayday, schedule)
 
     companion object {
-        /** The actual payday date in a month: clamped to month length, moved to Friday if on a weekend. */
+        /**
+         * The actual payday date in a month: clamped to month length and, when [adjustForWeekend] is on,
+         * moved back to the previous business day if it falls on a weekend or SA public holiday.
+         */
         fun paydayIn(month: YearMonth, payday: Int, adjustForWeekend: Boolean): LocalDate {
-            val day = payday.coerceIn(1, month.lengthOfMonth())
-            var date = month.atDay(day)
-            if (adjustForWeekend) {
-                date = when (date.dayOfWeek) {
-                    DayOfWeek.SATURDAY -> date.minusDays(1)
-                    DayOfWeek.SUNDAY -> date.minusDays(2)
-                    else -> date
-                }
-            }
-            return date
+            val date = month.atDay(payday.coerceIn(1, month.lengthOfMonth()))
+            return if (adjustForWeekend) SaPublicHolidays.previousBusinessDay(date) else date
         }
 
         fun forDate(today: LocalDate, payday: Int, adjustForWeekend: Boolean): PayCycle =

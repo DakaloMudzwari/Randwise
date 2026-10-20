@@ -11,6 +11,7 @@ import com.randwise.app.data.model.Account
 import com.randwise.app.data.model.Budget
 import com.randwise.app.data.model.Category
 import com.randwise.app.data.model.CategoryRule
+import com.randwise.app.data.model.ChatMessageEntity
 import com.randwise.app.data.model.ConsentRecord
 import com.randwise.app.data.model.Debt
 import com.randwise.app.data.model.Goal
@@ -138,6 +139,22 @@ interface BillDao {
 
     @Delete
     suspend fun delete(bill: RecurringBill)
+}
+
+@Dao
+interface ChatDao {
+    @Query("SELECT * FROM chat_messages ORDER BY timestamp, id")
+    suspend fun all(): List<ChatMessageEntity>
+
+    @Insert
+    suspend fun insert(message: ChatMessageEntity)
+
+    @Query("DELETE FROM chat_messages")
+    suspend fun clear()
+
+    /** Keeps history bounded: only the newest [keep] turns survive. */
+    @Query("DELETE FROM chat_messages WHERE id NOT IN (SELECT id FROM chat_messages ORDER BY timestamp DESC, id DESC LIMIT :keep)")
+    suspend fun trim(keep: Int)
 }
 
 @Dao

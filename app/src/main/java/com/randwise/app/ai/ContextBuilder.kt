@@ -37,7 +37,7 @@ object ContextBuilder {
             )
         }
         val debts = snapshot.debts.mapIndexed { i, d ->
-            DebtFact("Debt ${i + 1}", d.balanceMinor, Money.formatPercentBp(d.aprBp.toLong()), d.minPaymentMinor)
+            DebtFact("Debt ${i + 1}", d.balanceMinor, Money.formatPercentBp(d.aprBp.toLong()), d.minimumFor(d.balanceMinor))
         }
         val f = a.forecast30
         return CoachFacts(

@@ -392,14 +392,14 @@ private fun DebtPlanner(debts: List<Debt>, onEdit: (Debt) -> Unit) {
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).pressable({ onEdit(d) }).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(d.name, style = MaterialTheme.typography.titleSmall)
-                        Text("${Money.formatPercentBp(d.aprBp.toLong())} APR · min ${Money.formatWhole(d.minPaymentMinor)}", style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
+                        Text("${Money.formatPercentBp(d.aprBp.toLong())} APR · min ${Money.formatWhole(d.minimumFor(d.balanceMinor))}" + (if (d.minPaymentBp > 0) " (${Money.formatPercentBp(d.minPaymentBp.toLong())} of balance)" else ""), style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
                     }
                     MoneyText(d.balanceMinor, style = MaterialTheme.typography.titleSmall, whole = true)
                 }
             }
         }
         MoneyField(extra, { extra = it }, "Extra per month on top of minimums")
-        val budget = debts.sumOf { it.minPaymentMinor } + (Money.parse(extra) ?: 0)
+        val budget = debts.sumOf { it.minimumFor(it.balanceMinor) } + (Money.parse(extra) ?: 0)
         val snow = remember(debts, budget) { DebtPlanner.plan(debts, budget, DebtStrategy.SNOWBALL) }
         val aval = remember(debts, budget) { DebtPlanner.plan(debts, budget, DebtStrategy.AVALANCHE) }
         val best = when {
@@ -542,20 +542,37 @@ private fun DebtDialog(debt: Debt, onDismiss: () -> Unit, onSave: (Debt) -> Unit
     // Basis points share the cents representation: "21.75" -> 2175.
     var apr by remember { mutableStateOf(if (debt.aprBp > 0) Money.toPlain(debt.aprBp.toLong()) else "") }
     var min by remember { mutableStateOf(if (debt.minPaymentMinor > 0) Money.toPlain(debt.minPaymentMinor) else "") }
+    var pctMode by remember { mutableIntStateOf(if (debt.minPaymentBp > 0) 1 else 0) }
+    var pct by remember { mutableStateOf(if (debt.minPaymentBp > 0) Money.toPlain(debt.minPaymentBp.toLong()) else "3") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (debt.id == 0L) "New debt" else "Edit debt") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 RWTextField(name, { name = it.take(40) }, "Name (e.g. Credit card)")
                 MoneyField(balance, { balance = it }, "Outstanding balance")
                 RWTextField(apr, { apr = it.filter { c -> c.isDigit() || c == '.' } }, "Interest rate (APR)", keyboardType = KeyboardType.Decimal, suffix = "%")
-                MoneyField(min, { min = it }, "Minimum monthly payment")
+                SegmentedControl(listOf("Fixed instalment", "% of balance"), pctMode, { pctMode = it })
+                if (pctMode == 1) {
+                    RWTextField(pct, { pct = it.filter { c -> c.isDigit() || c == '.' } }, "Minimum % of balance", keyboardType = KeyboardType.Decimal, suffix = "%", supporting = "Most SA cards ask 3–5% a month")
+                    MoneyField(min, { min = it }, "But never less than", supporting = "The card's minimum floor, e.g. R150")
+                } else {
+                    MoneyField(min, { min = it }, "Monthly instalment")
+                }
             }
         },
         confirmButton = {
             TextButton(
-                { onSave(debt.copy(name = name.trim(), balanceMinor = Money.parse(balance) ?: 0, aprBp = (Money.parse(apr) ?: 0).toInt(), minPaymentMinor = Money.parse(min) ?: 0)) },
+                {
+                    onSave(
+                        debt.copy(
+                            name = name.trim(), balanceMinor = Money.parse(balance) ?: 0, aprBp = (Money.parse(apr) ?: 0).toInt(),
+                            minPaymentMinor = Money.parse(min) ?: 0,
+                            // Percent and basis points share the cents representation: "3.5" -> 350.
+                            minPaymentBp = if (pctMode == 1) (Money.parse(pct) ?: 0).toInt().coerceIn(0, 10_000) else 0,
+                        ),
+                    )
+                },
                 enabled = name.isNotBlank() && (Money.parse(balance) ?: 0) > 0,
             ) { Text("Save") }
         },
