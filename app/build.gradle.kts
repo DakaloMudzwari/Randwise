@@ -38,6 +38,8 @@ android {
         debug {
             // `./gradlew installDebug -PrwPreview` installs a side-by-side copy (fresh data) for UI testing.
             if (project.hasProperty("rwPreview")) applicationIdSuffix = ".preview"
+            // `-PrwAbi=x86_64` packages one CPU architecture only (≈4× smaller) for emulators short on space.
+            (project.findProperty("rwAbi") as String?)?.let { ndk { abiFilters += it.split(",") } }
         }
         release {
             isMinifyEnabled = true
