@@ -15,6 +15,7 @@ import com.randwise.app.R
 import com.randwise.app.RandWiseApplication
 import com.randwise.app.core.Money
 import com.randwise.app.domain.FinanceAnalyzer
+import com.randwise.app.domain.engine.BudgetAlerts
 import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -24,10 +25,14 @@ class BillReminderWorker(context: Context, params: WorkerParameters) : Coroutine
 
     override suspend fun doWork(): Result {
         val app = applicationContext as RandWiseApplication
-        if (!app.container.preferences.settings.value.billReminders) return Result.success()
+        val settings = app.container.preferences.settings.value
+        if (!settings.billReminders && !settings.budgetAlerts) return Result.success()
         val snapshot = app.container.repository.snapshot.first()
         val today = LocalDate.now()
         val analysis = FinanceAnalyzer.analyze(snapshot, today) ?: return Result.success()
+
+        if (settings.budgetAlerts) sendBudgetAlerts(analysis)
+        if (!settings.billReminders) return Result.success()
 
         val dueSoon = analysis.safeToSpend.unpaidBills.filter { ChronoUnit.DAYS.between(today, it.dueDate) in 0..2 }
         if (dueSoon.isNotEmpty()) {
@@ -39,6 +44,16 @@ class BillReminderWorker(context: Context, params: WorkerParameters) : Coroutine
             notify(1002, "Below your safety buffer", "Safe-to-spend is ${Money.format(analysis.safeToSpend.safeToSpend)} with ${analysis.safeToSpend.daysUntilPayday} days to payday.")
         }
         return Result.success()
+    }
+
+    /** 80% and 100% budget alerts, each sent once per category per pay cycle. */
+    private fun sendBudgetAlerts(analysis: com.randwise.app.domain.Analysis) {
+        val prefs = applicationContext.getSharedPreferences("rw_alerts", Context.MODE_PRIVATE)
+        val cycleStart = analysis.cycle.start.toEpochDay()
+        val sent = BudgetAlerts.prune(prefs.getStringSet("sent", emptySet()).orEmpty(), cycleStart)
+        val due = BudgetAlerts.due(analysis.budgetLines, cycleStart, sent)
+        due.forEachIndexed { i, alert -> notify(2000 + (alert.key.hashCode() and 0x3FF) + i, alert.title, alert.body) }
+        prefs.edit().putStringSet("sent", sent + due.map { it.key }).apply()
     }
 
     private fun notify(id: Int, title: String, body: String) {

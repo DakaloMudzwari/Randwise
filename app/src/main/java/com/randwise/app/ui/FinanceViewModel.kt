@@ -144,9 +144,9 @@ class FinanceViewModel(private val container: AppContainer) : ViewModel() {
         val before = settings.value
         container.preferences.update(transform)
         val after = settings.value
-        if (before.billReminders != after.billReminders) {
-            (context.applicationContext as RandWiseApplication).scheduleReminders(after.billReminders)
-        }
+        val wasOn = before.billReminders || before.budgetAlerts
+        val isOn = after.billReminders || after.budgetAlerts
+        if (wasOn != isOn) (context.applicationContext as RandWiseApplication).scheduleReminders(isOn)
     }
 
     fun exportCsv(context: Context, uri: Uri) = launchSafe("Exported transactions (CSV)") {

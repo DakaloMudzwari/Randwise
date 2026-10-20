@@ -217,3 +217,28 @@ class CategoryLearningTest {
         assertEquals("VIDA CAFFE", CategoryLearning.patternFor(corrected))
     }
 }
+
+class BudgetAlertsTest {
+    private val groceries = com.randwise.app.data.model.Category(id = 5, name = "Groceries", bucket = com.randwise.app.data.model.Bucket.VARIABLE, colorArgb = 0)
+    private fun line(spent: Long, limit: Long = 100_000) = com.randwise.app.domain.engine.BudgetEngine.line(groceries, 1, limit, spent, 0, spent)
+
+    @Test
+    fun `alerts once at 80 percent and once when exceeded`() {
+        val start = 20_000L
+        val at85 = com.randwise.app.domain.engine.BudgetAlerts.due(listOf(line(85_000)), start, emptySet())
+        assertEquals(listOf("5:$start:80"), at85.map { it.key })
+        // Already sent 80% -> nothing new at 90%.
+        assertTrue(com.randwise.app.domain.engine.BudgetAlerts.due(listOf(line(90_000)), start, setOf("5:$start:80")).isEmpty())
+        // Crossing 100% sends the over-budget alert.
+        val over = com.randwise.app.domain.engine.BudgetAlerts.due(listOf(line(120_000)), start, setOf("5:$start:80"))
+        assertEquals(listOf("5:$start:100"), over.map { it.key })
+        assertTrue(over.first().body.contains("over"))
+        // Under 80% -> nothing.
+        assertTrue(com.randwise.app.domain.engine.BudgetAlerts.due(listOf(line(50_000)), start, emptySet()).isEmpty())
+    }
+
+    @Test
+    fun `a new cycle starts fresh`() {
+        assertEquals(setOf("5:200:80"), com.randwise.app.domain.engine.BudgetAlerts.prune(setOf("5:100:80", "5:100:100", "5:200:80"), 200))
+    }
+}

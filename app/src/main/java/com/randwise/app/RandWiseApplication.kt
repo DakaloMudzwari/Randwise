@@ -43,7 +43,7 @@ class RandWiseApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         createNotificationChannel()
-        scheduleReminders(container.preferences.settings.value.billReminders)
+        container.preferences.settings.value.let { scheduleReminders(it.billReminders || it.budgetAlerts) }
         // Open (and key) the encrypted database off the main thread while the first frame renders.
         container.appScope.launch(Dispatchers.IO) { runCatching { container.database.openHelper.writableDatabase } }
         // MobileAds is initialised by AdsConsent only once the UMP consent flow allows it.

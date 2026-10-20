@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.AdsClick
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.DonutLarge
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Key
@@ -169,6 +170,9 @@ fun SettingsScreen(vm: FinanceViewModel) {
                 }
                 ToggleRow(Icons.Rounded.NotificationsActive, Palette.Amber, "Bill reminders", "Heads-up 2 days before a debit · details hidden on lock screen", settings.billReminders) { v ->
                     vm.updateSettings(context) { it.copy(billReminders = v) }
+                }
+                ToggleRow(Icons.Rounded.DonutLarge, Palette.Teal, "Budget alerts", "At 80% and when a budget is exceeded — once per cycle", settings.budgetAlerts) { v ->
+                    vm.updateSettings(context) { it.copy(budgetAlerts = v) }
                 }
             }
         }
