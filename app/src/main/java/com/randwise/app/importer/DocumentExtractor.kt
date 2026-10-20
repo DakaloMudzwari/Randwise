@@ -97,6 +97,12 @@ class DocumentExtractor(private val context: Context) {
             }
         } catch (e: SecurityException) {
             throw PasswordRequiredException()
+        } catch (e: com.google.mlkit.common.MlKitException) {
+            // Unbundled OCR: Play services may still be downloading the model right after install.
+            if (e.errorCode == com.google.mlkit.common.MlKitException.UNAVAILABLE) {
+                throw IllegalStateException("Scanned-PDF reading is still being set up by Google Play services. Try again in a minute, or import a CSV / text PDF instead.")
+            }
+            throw e
         } finally {
             recognizer.close()
         }

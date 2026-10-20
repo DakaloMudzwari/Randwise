@@ -49,6 +49,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -86,14 +88,24 @@ import kotlin.math.abs
  */
 @Composable
 fun AuroraBackground(modifier: Modifier = Modifier, intensity: Float = 1f) {
-    val t = rememberInfiniteTransition(label = "aurora")
     val reduce = LocalReduceMotion.current
-    val aState = t.animateFloat(0f, 1f, infiniteRepeatable(tween(14_000, easing = LinearEasing), RepeatMode.Reverse), label = "a")
-    val bState = t.animateFloat(0f, 1f, infiniteRepeatable(tween(19_000, easing = LinearEasing), RepeatMode.Reverse), label = "b")
+    // The drift is so slow that ~12 fps is visually identical to 60 fps but redraws the full-screen
+    // gradients 5× less often — a real battery saving on the screen that's always visible.
+    val seconds = remember { mutableFloatStateOf(0f) }
+    if (!reduce) {
+        LaunchedEffect(Unit) {
+            val start = withFrameMillis { it }
+            while (true) {
+                withFrameMillis { seconds.floatValue = (it - start) / 1000f }
+                kotlinx.coroutines.delay(AURORA_FRAME_MS)
+            }
+        }
+    }
     Canvas(modifier.fillMaxSize().background(Palette.Navy950)) {
         // Read in the draw phase so the drift only redraws, never recomposes.
-        val a = if (reduce) 0.5f else aState.value
-        val b = if (reduce) 0.5f else bState.value
+        val s = seconds.floatValue
+        val a = if (reduce) 0.5f else triangle(s, 14f)
+        val b = if (reduce) 0.5f else triangle(s, 19f)
         val w = size.width
         val h = size.height
         fun blob(center: Offset, radius: Float, color: Color, alpha: Float) = drawCircle(
@@ -107,6 +119,14 @@ fun AuroraBackground(modifier: Modifier = Modifier, intensity: Float = 1f) {
         // Vignette pulls focus to the centre.
         drawRect(Brush.verticalGradient(listOf(Color.Transparent, Palette.Ink.copy(alpha = 0.55f)), startY = h * 0.55f, endY = h))
     }
+}
+
+private const val AURORA_FRAME_MS = 80L
+
+/** 0→1→0 over [period] seconds (the old RepeatMode.Reverse drift, without an every-frame animation). */
+private fun triangle(seconds: Float, period: Float): Float {
+    val p = (seconds % (2 * period)) / period
+    return if (p <= 1f) p else 2f - p
 }
 
 // ---------------------------------------------------------------- Interaction
