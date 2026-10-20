@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RandWise</string>
+    <string name="channel_bills">Bill reminders</string>
+    <string name="unlock_title">Unlock RandWise</string>
+    <string name="unlock_subtitle">Confirm it\'s you to view your finances</string>
+    <string name="cancel">Cancel</string>
+</resources>

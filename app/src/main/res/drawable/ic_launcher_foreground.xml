@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stylised "R" with an emerald upward tick, on the navy adaptive background. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M38,32h18c9,0 15,5.5 15,13.5c0,6 -3.5,10.3 -9,12.2l10,18.3h-9.5l-9,-17h-7.5v17h-8zM46,39v13h9.5c4.5,0 7.5,-2.6 7.5,-6.5s-3,-6.5 -7.5,-6.5z" />
+    <path
+        android:fillColor="#FF10B981"
+        android:pathData="M60,76l8,-9 6,5 9,-12 3,2.3 -11.6,15.4 -6,-5 -5.7,6.3z" />
+</vector>

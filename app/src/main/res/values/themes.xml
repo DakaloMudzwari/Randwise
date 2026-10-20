@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="navy_900">#FF071629</color>
+    <color name="emerald_500">#FF10B981</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <style name="Theme.RandWise" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/navy_900</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

@@ -1,0 +1,9 @@
+# Normalise line endings in the repo; gradlew must stay LF or it breaks on Linux/macOS CI.
+* text=auto eol=lf
+*.bat text eol=crlf
+gradlew text eol=lf
+
+*.jar binary
+*.ttf binary
+*.png binary
+*.webp binary
