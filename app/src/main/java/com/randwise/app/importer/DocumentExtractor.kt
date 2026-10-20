@@ -20,7 +20,8 @@ import java.io.File
 
 enum class ExtractionMethod { CSV, PDF_TEXT, PDF_OCR, PLAIN_TEXT }
 
-data class ExtractionResult(val fileName: String, val method: ExtractionMethod, val statement: ParsedStatement)
+/** [rawCsv] is kept (in memory only) so the user can remap columns without re-reading the file. */
+data class ExtractionResult(val fileName: String, val method: ExtractionMethod, val statement: ParsedStatement, val rawCsv: String? = null)
 
 /**
  * F03 Bank Statement Parser front-end. Reads CSV directly, extracts text-based PDFs with
@@ -38,7 +39,7 @@ class DocumentExtractor(private val context: Context) {
                 ?: error("Could not open file")
             val isCsv = name.endsWith(".csv", true) || mime.contains("csv") || mime.contains("comma")
             return@withContext if (isCsv || text.lines().take(5).any { it.count { c -> c == ',' || c == ';' } >= 2 }) {
-                ExtractionResult(name, ExtractionMethod.CSV, CsvStatementParser.parse(text))
+                ExtractionResult(name, ExtractionMethod.CSV, CsvStatementParser.parse(text), rawCsv = text)
             } else {
                 ExtractionResult(name, ExtractionMethod.PLAIN_TEXT, TextStatementParser.parse(text))
             }

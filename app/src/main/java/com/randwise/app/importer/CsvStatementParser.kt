@@ -7,19 +7,73 @@ import com.randwise.app.core.Money
  * Handles preamble rows, quoted fields, single signed amount columns or separate debit/credit
  * columns, and descending date order.
  */
+/**
+ * Which column holds what — detected automatically, or chosen by the user in the mapping screen
+ * when a bank's export doesn't match any known layout. Column indexes are 0-based.
+ */
+data class CsvMapping(
+    /** Index of the header row, or -1 when the file has none. Rows above it are ignored. */
+    val headerRow: Int,
+    val date: Int,
+    val description: Int,
+    /** Single signed amount column; null when the file uses separate debit/credit columns. */
+    val amount: Int?,
+    val debit: Int? = null,
+    val credit: Int? = null,
+    val balance: Int? = null,
+)
+
+data class CsvPreview(val rows: List<List<String>>, val columnCount: Int, val suggested: CsvMapping?)
+
 object CsvStatementParser {
 
     private enum class Col { DATE, DESC, AMOUNT, DEBIT, CREDIT, BALANCE }
 
-    fun parse(text: String): ParsedStatement {
+    private fun rowsOf(text: String): List<List<String>> {
         val rawLines = text.replace("﻿", "").lines().filter { it.isNotBlank() }
-        if (rawLines.isEmpty()) return ParsedStatement(emptyList(), null, null, listOf("File is empty."))
+        if (rawLines.isEmpty()) return emptyList()
         val delimiter = detectDelimiter(rawLines.take(30))
-        val rows = rawLines.map { splitRow(it, delimiter) }
+        return rawLines.map { splitRow(it, delimiter) }
+    }
 
-        val headerIdx = rows.take(25).indexOfFirst { row -> row.any { it.trim().lowercase().contains("date") } && row.size >= 3 }
+    private fun detectHeader(rows: List<List<String>>): Int =
+        rows.take(25).indexOfFirst { row -> row.any { it.trim().lowercase().contains("date") } && row.size >= 3 }
+
+    /** First rows of the file plus the auto-detected mapping, for the manual mapping screen. */
+    fun preview(text: String, maxRows: Int = 30): CsvPreview {
+        val rows = rowsOf(text)
+        val header = detectHeader(rows)
+        val m = if (header >= 0) mapHeader(rows[header]) else emptyMap()
+        val suggested = if (Col.DATE in m && Col.DESC in m && (Col.AMOUNT in m || Col.DEBIT in m || Col.CREDIT in m)) {
+            CsvMapping(header, m.getValue(Col.DATE), m.getValue(Col.DESC), m[Col.AMOUNT], m[Col.DEBIT], m[Col.CREDIT], m[Col.BALANCE])
+        } else null
+        return CsvPreview(rows.take(maxRows), rows.take(maxRows).maxOfOrNull { it.size } ?: 0, suggested)
+    }
+
+    /** Parses with a user-confirmed mapping instead of auto-detection. */
+    fun parseWith(text: String, mapping: CsvMapping): ParsedStatement {
+        val rows = rowsOf(text)
+        if (rows.isEmpty()) return ParsedStatement(emptyList(), null, null, listOf("File is empty."))
+        val m = buildMap {
+            put(Col.DATE, mapping.date); put(Col.DESC, mapping.description)
+            mapping.amount?.let { put(Col.AMOUNT, it) }
+            mapping.debit?.let { put(Col.DEBIT, it) }
+            mapping.credit?.let { put(Col.CREDIT, it) }
+            mapping.balance?.let { put(Col.BALANCE, it) }
+        }
+        return parseRows(rows.drop(mapping.headerRow + 1), m)
+    }
+
+    fun parse(text: String): ParsedStatement {
+        val rows = rowsOf(text)
+        if (rows.isEmpty()) return ParsedStatement(emptyList(), null, null, listOf("File is empty."))
+        val headerIdx = detectHeader(rows)
         val mapping = if (headerIdx >= 0) mapHeader(rows[headerIdx]) else emptyMap()
         val dataRows = if (headerIdx >= 0) rows.drop(headerIdx + 1) else rows
+        return parseRows(dataRows, mapping)
+    }
+
+    private fun parseRows(dataRows: List<List<String>>, mapping: Map<Col, Int>): ParsedStatement {
 
         var opening: Long? = null
         var closing: Long? = null

@@ -3,6 +3,7 @@ package com.randwise.app
 import com.randwise.app.data.model.Category
 import com.randwise.app.data.model.Bucket
 import com.randwise.app.importer.Categorizer
+import com.randwise.app.importer.CsvMapping
 import com.randwise.app.importer.CsvStatementParser
 import com.randwise.app.importer.Fingerprint
 import com.randwise.app.importer.StatementValidator
@@ -70,6 +71,28 @@ class StatementImportTest {
         assertEquals(LocalDate.of(2026, 10, 5), s.lines.last().date)
         assertEquals("POS Purchase Checkers", s.lines[1].description)
         assertEquals(true, StatementValidator.validate(s).balanced)
+    }
+
+    @Test
+    fun `manual column mapping reads layouts auto-detection doesn't know`() {
+        val csv = "Posted;Narrative;Out;In;Running\n01/10/2026;Salary;;1000,00;1000,00\n02/10/2026;Shop;250,00;;750,00"
+        val preview = CsvStatementParser.preview(csv)
+        assertNull(preview.suggested) // no "date" header, so nothing to suggest
+        assertEquals(5, preview.columnCount)
+        val mapping = CsvMapping(headerRow = 0, date = 0, description = 1, amount = null, debit = 2, credit = 3, balance = 4)
+        val s = CsvStatementParser.parseWith(csv, mapping)
+        assertEquals(listOf(100_000L, -25_000L), s.lines.map { it.signedAmount })
+        assertEquals("Shop", s.lines[1].description)
+        assertEquals(true, StatementValidator.validate(s).balanced)
+    }
+
+    @Test
+    fun `preview suggests the detected mapping`() {
+        val suggested = CsvStatementParser.preview(signedCsv).suggested!!
+        assertEquals(1, suggested.headerRow)
+        assertEquals(0, suggested.date)
+        assertEquals(2, suggested.amount)
+        assertEquals(3, suggested.balance)
     }
 
     @Test

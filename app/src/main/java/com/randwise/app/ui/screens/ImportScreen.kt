@@ -56,6 +56,7 @@ import com.randwise.app.data.ImportRow
 import com.randwise.app.data.model.Bucket
 import com.randwise.app.data.model.Category
 import com.randwise.app.data.model.TxType
+import com.randwise.app.importer.CsvMapping
 import com.randwise.app.importer.ExtractionMethod
 import com.randwise.app.ui.FinanceViewModel
 import com.randwise.app.ui.ImportState
@@ -103,6 +104,7 @@ fun ImportScreen(vm: FinanceViewModel, importVm: ImportViewModel, accountId: Lon
                 TextButton({ importVm.reset(); picker.launch(mimeTypes) }) { Text("Import another") }
             }
             is ImportState.Review -> ReviewList(s, fin.snapshot.categories, importVm)
+            is ImportState.NeedsMapping -> ColumnMapper(s, importVm)
         }
     }
 }
@@ -157,6 +159,9 @@ private fun ReviewList(s: ImportState.Review, categories: List<Category>, import
                             style = MaterialTheme.typography.bodySmall,
                         )
                         s.warnings.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = RW.colors.warning) }
+                        if (s.rawCsv != null) TextButton({ importVm.remap() }, contentPadding = PaddingValues(0.dp)) {
+                            Text("Amounts or dates look wrong? Choose the columns yourself", color = RW.colors.positive)
+                        }
                     }
                 }
             }
@@ -220,5 +225,81 @@ private fun ReviewRow(row: ImportRow, categories: List<Category>, importVm: Impo
             style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
             color = (if (signed > 0) RW.colors.positive else MaterialTheme.colorScheme.onSurface).copy(alpha = dim),
         )
+    }
+}
+
+/**
+ * Manual CSV column mapping — the fallback when a bank's export layout isn't recognised.
+ * Shows a sample of the file and a live count of transactions found with the chosen columns.
+ */
+@Composable
+private fun ColumnMapper(s: ImportState.NeedsMapping, importVm: ImportViewModel) {
+    val p = s.preview
+    val sug = p.suggested
+    var headerRow by remember(s) { mutableStateOf(sug?.headerRow ?: -1) }
+    var date by remember(s) { mutableStateOf(sug?.date ?: 0) }
+    var desc by remember(s) { mutableStateOf(sug?.description ?: 1.coerceAtMost(p.columnCount - 1)) }
+    var split by remember(s) { mutableStateOf(sug != null && sug.amount == null) }
+    var amount by remember(s) { mutableStateOf(sug?.amount ?: 2.coerceAtMost(p.columnCount - 1)) }
+    var debit by remember(s) { mutableStateOf(sug?.debit ?: 2.coerceAtMost(p.columnCount - 1)) }
+    var credit by remember(s) { mutableStateOf(sug?.credit ?: 3.coerceAtMost(p.columnCount - 1)) }
+    var balance by remember(s) { mutableStateOf(sug?.balance) }
+
+    val header = p.rows.getOrNull(headerRow)
+    fun colName(i: Int) = "Column ${i + 1}" + (header?.getOrNull(i)?.trim()?.takeIf { it.isNotEmpty() }?.let { " · $it" } ?: "")
+    val cols = (0 until p.columnCount).toList()
+    val mapping = CsvMapping(headerRow, date, desc, if (split) null else amount, if (split) debit else null, if (split) credit else null, balance)
+    val found = remember(mapping) { importVm.previewCount(s.rawCsv, mapping) }
+
+    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Text("Match the columns", style = MaterialTheme.typography.headlineSmall)
+            Text(s.reason ?: "Tell RandWise which column holds each value.", color = RW.colors.warning.takeIf { s.reason != null } ?: MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item {
+            // Sample of the raw file, monospaced so columns are easy to compare.
+            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("Your file", style = MaterialTheme.typography.labelMedium)
+                    p.rows.take(6).forEachIndexed { i, row ->
+                        Text(
+                            "${i + 1}: " + row.joinToString(" | ") { it.trim().take(18) },
+                            style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                            maxLines = 1, color = if (i == headerRow) RW.colors.positive else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        }
+        item {
+            val headerOptions = listOf(-1) + (0 until minOf(10, p.rows.size))
+            Dropdown("Header row", headerOptions, headerRow, { if (it < 0) "No header row" else "Row ${it + 1}" }, { headerRow = it })
+        }
+        item { Dropdown("Date", cols, date, ::colName, { date = it }) }
+        item { Dropdown("Description", cols, desc, ::colName, { desc = it }) }
+        item {
+            com.randwise.app.ui.components.SegmentedControl(listOf("One amount column", "Debit & credit"), if (split) 1 else 0, { split = it == 1 })
+        }
+        if (split) {
+            item { Dropdown("Money out (debit)", cols, debit, ::colName, { debit = it }) }
+            item { Dropdown("Money in (credit)", cols, credit, ::colName, { credit = it }) }
+        } else {
+            item { Dropdown("Amount (+ in, − out)", cols, amount, ::colName, { amount = it }) }
+        }
+        item {
+            val balOptions = listOf<Int?>(null) + cols
+            Dropdown("Running balance (optional)", balOptions, balance, { it?.let(::colName) ?: "None" }, { balance = it })
+        }
+        item {
+            Text(
+                if (found > 0) "Found $found transactions with these columns" else "No transactions found yet — adjust the columns",
+                color = if (found > 0) RW.colors.positive else RW.colors.warning, style = MaterialTheme.typography.titleSmall,
+            )
+        }
+        item {
+            Button({ importVm.applyMapping(mapping) }, enabled = found > 0, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
+                Text("Use these columns")
+            }
+        }
     }
 }

@@ -8,6 +8,9 @@ import com.randwise.app.data.ImportRow
 import com.randwise.app.data.model.Account
 import com.randwise.app.data.model.TxType
 import com.randwise.app.importer.BalanceCheck
+import com.randwise.app.importer.CsvMapping
+import com.randwise.app.importer.CsvPreview
+import com.randwise.app.importer.CsvStatementParser
 import com.randwise.app.importer.ExtractionMethod
 import com.randwise.app.importer.PasswordRequiredException
 import com.randwise.app.importer.StatementValidator
@@ -21,6 +24,14 @@ sealed interface ImportState {
     data object Idle : ImportState
     data class Working(val message: String) : ImportState
     data class NeedsPassword(val uri: Uri, val account: Account, val error: String?) : ImportState
+    /** CSV whose columns couldn't be detected (or the user wants to fix them): pick them by hand. */
+    data class NeedsMapping(
+        val account: Account,
+        val fileName: String,
+        val rawCsv: String,
+        val preview: CsvPreview,
+        val reason: String?,
+    ) : ImportState
     data class Review(
         val account: Account,
         val fileName: String,
@@ -28,6 +39,7 @@ sealed interface ImportState {
         val check: BalanceCheck,
         val warnings: List<String>,
         val rows: List<ImportRow>,
+        val rawCsv: String? = null,
     ) : ImportState {
         val newCount get() = rows.count { it.include && !it.isDuplicate }
         val duplicateCount get() = rows.count { it.isDuplicate }
@@ -51,10 +63,15 @@ class ImportViewModel(private val container: AppContainer) : ViewModel() {
                 if (result.method == ExtractionMethod.PDF_OCR) _state.value = ImportState.Working("Scanned PDF detected — running on-device OCR…")
                 val rows = container.repository.stageImport(account, result.statement)
                 if (rows.isEmpty()) {
-                    _state.value = ImportState.Failed(result.statement.warnings.firstOrNull() ?: "No transactions found in ${result.fileName}.")
+                    // A CSV we couldn't read automatically: let the user point at the columns instead of giving up.
+                    if (result.rawCsv != null) {
+                        _state.value = ImportState.NeedsMapping(account, result.fileName, result.rawCsv, CsvStatementParser.preview(result.rawCsv), "We couldn't recognise this bank's columns automatically.")
+                    } else {
+                        _state.value = ImportState.Failed(result.statement.warnings.firstOrNull() ?: "No transactions found in ${result.fileName}.")
+                    }
                     return@launch
                 }
-                _state.value = ImportState.Review(account, result.fileName, result.method, StatementValidator.validate(result.statement), result.statement.warnings, rows)
+                _state.value = ImportState.Review(account, result.fileName, result.method, StatementValidator.validate(result.statement), result.statement.warnings, rows, result.rawCsv)
             } catch (e: PasswordRequiredException) {
                 _state.value = ImportState.NeedsPassword(uri, account, if (password != null) "Incorrect password" else null)
             } catch (e: Exception) {
@@ -78,6 +95,27 @@ class ImportViewModel(private val container: AppContainer) : ViewModel() {
             runCatching { container.repository.commitImport(s.account.id, s.rows, rememberRules) }
                 .onSuccess { _state.value = ImportState.Done(it, s.rows.size - it) }
                 .onFailure { _state.value = ImportState.Failed(it.message ?: "Import failed") }
+        }
+    }
+
+    /** From the review screen: re-open the column mapping for this CSV. */
+    fun remap() {
+        val s = _state.value as? ImportState.Review ?: return
+        val raw = s.rawCsv ?: return
+        _state.value = ImportState.NeedsMapping(s.account, s.fileName, raw, CsvStatementParser.preview(raw), null)
+    }
+
+    /** Live count for the mapping screen so the user sees whether their choice works. */
+    fun previewCount(raw: String, mapping: CsvMapping): Int = runCatching { CsvStatementParser.parseWith(raw, mapping).lines.size }.getOrDefault(0)
+
+    fun applyMapping(mapping: CsvMapping) {
+        val s = _state.value as? ImportState.NeedsMapping ?: return
+        _state.value = ImportState.Working("Reading with your columns…")
+        viewModelScope.launch {
+            val statement = CsvStatementParser.parseWith(s.rawCsv, mapping)
+            val rows = container.repository.stageImport(s.account, statement)
+            _state.value = if (rows.isEmpty()) s.copy(reason = "No transactions with those columns — try a different date or amount column.")
+            else ImportState.Review(s.account, s.fileName, ExtractionMethod.CSV, StatementValidator.validate(statement), statement.warnings, rows, s.rawCsv)
         }
     }
 

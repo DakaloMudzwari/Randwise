@@ -48,7 +48,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.randwise.app.core.Money
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import com.randwise.app.data.model.AccountType
+import com.randwise.app.data.model.PayFrequency
+import com.randwise.app.security.PasscodeKind
+import kotlinx.coroutines.launch
+import java.time.LocalDate
 import com.randwise.app.data.model.UserProfile
 import com.randwise.app.ui.FinanceViewModel
 import com.randwise.app.ui.components.CoachOrb
@@ -82,10 +89,19 @@ fun OnboardingScreen(vm: FinanceViewModel) {
     var accountName by rememberSaveable { mutableStateOf("Everyday account") }
     var accountType by rememberSaveable { mutableIntStateOf(0) }
     var balance by rememberSaveable { mutableStateOf("") }
+    var freq by rememberSaveable { mutableIntStateOf(0) }
+    var lastPayday by rememberSaveable { mutableLongStateOf(LocalDate.now().toEpochDay()) }
+    var lockKind by rememberSaveable { mutableIntStateOf(0) }
+    var secret by rememberSaveable { mutableStateOf("") }
+    var secretConfirm by rememberSaveable { mutableStateOf("") }
+    var secretError by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
+    val freqs = listOf(PayFrequency.MONTHLY, PayFrequency.FORTNIGHTLY, PayFrequency.WEEKLY)
     val types = listOf(AccountType.CHEQUE, AccountType.SAVINGS, AccountType.CASH)
+    val lastStep = 4
     val canNext = when (step) {
-        1 -> (Money.parse(income) ?: 0) > 0 && payday.toIntOrNull() in 1..31
+        1 -> (Money.parse(income) ?: 0) > 0 && (freqs[freq] != PayFrequency.MONTHLY || payday.toIntOrNull() in 1..31)
         2 -> obligationDay.toIntOrNull() in 1..31
         3 -> accountName.isNotBlank() && Money.parse(balance.ifBlank { "0" }) != null
         else -> true
@@ -99,12 +115,24 @@ fun OnboardingScreen(vm: FinanceViewModel) {
             safetyBufferMinor = Money.parse(buffer) ?: 0,
             plannedSavingsMinor = Money.parse(savings) ?: 0,
             emergencyTargetMonths = emergencyMonths.toIntOrNull()?.coerceIn(1, 24) ?: 3,
+            payFrequency = freqs[freq],
+            payAnchorDate = if (freqs[freq] == PayFrequency.MONTHLY) null else lastPayday,
         )
         vm.completeOnboarding(
             profile, accountName.trim(), types[accountType], Money.parse(balance.ifBlank { "0" }) ?: 0,
             listOf("Rent" to (Money.parse(rent) ?: 0), "Insurance" to (Money.parse(insurance) ?: 0), "Debt repayment" to (Money.parse(debt) ?: 0)),
             obligationDay.toIntOrNull()?.coerceIn(1, 31) ?: 1,
         )
+    }
+
+    /** Last step: optionally save the app password first, then finish. */
+    fun finishWithLock() {
+        if (secret.isEmpty()) { finish(); return }
+        if (secret != secretConfirm) { secretError = "The two entries don't match"; return }
+        scope.launch {
+            secretError = vm.setPasscode(null, secret, if (lockKind == 0) PasscodeKind.PIN else PasscodeKind.PASSWORD)
+            if (secretError == null) finish()
+        }
     }
 
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
@@ -114,7 +142,7 @@ fun OnboardingScreen(vm: FinanceViewModel) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = Palette.Text)
                 }
                 Spacer(Modifier.weight(1f))
-                StepDots(step - 1, 3)
+                StepDots(step - 1, lastStep)
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.width(44.dp))
             }
@@ -136,29 +164,54 @@ fun OnboardingScreen(vm: FinanceViewModel) {
                 when (s) {
                     0 -> Welcome()
                     1 -> {
-                        StepTitle("Step 1 of 3", "What lands in\nyour account?")
-                        MoneyField(income, { income = it }, "Monthly take-home pay")
-                        RWTextField(payday, { payday = it.filter(Char::isDigit).take(2) }, "Payday (day of month)", keyboardType = KeyboardType.Number, supporting = "Use 31 for the last day of the month")
-                        GlassCard {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("Weekend payday → Friday", style = MaterialTheme.typography.titleSmall)
-                                    Text("Most SA employers pay early when the date falls on a weekend", style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
+                        StepTitle("Step 1 of $lastStep", "What lands in\nyour account?")
+                        Text("How often are you paid?", style = MaterialTheme.typography.titleSmall)
+                        SegmentedControl(listOf("Monthly", "2-weekly", "Weekly"), freq, { freq = it })
+                        MoneyField(
+                            income, { income = it },
+                            when (freqs[freq]) { PayFrequency.MONTHLY -> "Monthly take-home pay"; PayFrequency.FORTNIGHTLY -> "Take-home per fortnight"; PayFrequency.WEEKLY -> "Take-home per week" },
+                        )
+                        if (freqs[freq] == PayFrequency.MONTHLY) {
+                            RWTextField(payday, { payday = it.filter(Char::isDigit).take(2) }, "Payday (day of month)", keyboardType = KeyboardType.Number, supporting = "Use 31 for the last day of the month")
+                            GlassCard {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("Weekend payday → Friday", style = MaterialTheme.typography.titleSmall)
+                                        Text("Most SA employers pay early when the date falls on a weekend", style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
+                                    }
+                                    Switch(weekendAdjust, { weekendAdjust = it })
                                 }
-                                Switch(weekendAdjust, { weekendAdjust = it })
                             }
+                        } else {
+                            DateField(LocalDate.ofEpochDay(lastPayday), { lastPayday = it.toEpochDay() }, label = "Your most recent payday")
+                            Text("We'll count every ${if (freqs[freq] == PayFrequency.WEEKLY) "7" else "14"} days from this date.", style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
                         }
                     }
                     2 -> {
-                        StepTitle("Step 2 of 3", "What's already\nspoken for?")
+                        StepTitle("Step 2 of $lastStep", "What's already\nspoken for?")
                         Text("These become bills that safe-to-spend always protects. Add more later.", color = Palette.TextDim)
                         MoneyField(rent, { rent = it }, "Rent or bond")
                         MoneyField(insurance, { insurance = it }, "Insurance & medical aid")
                         MoneyField(debt, { debt = it }, "Loan & card repayments")
                         RWTextField(obligationDay, { obligationDay = it.filter(Char::isDigit).take(2) }, "Usual debit-order day", keyboardType = KeyboardType.Number)
                     }
+                    4 -> {
+                        StepTitle("Step 4 of $lastStep", "Protect\nRandWise")
+                        Text(
+                            "Set your own PIN or password. It's required every time the app opens — even if someone knows your phone's screen lock. " +
+                                "You can skip this and add one later in the Vault.",
+                            color = Palette.TextDim,
+                        )
+                        SegmentedControl(listOf("PIN", "Password"), lockKind, { lockKind = it; secret = ""; secretConfirm = ""; secretError = null })
+                        val kt = if (lockKind == 0) KeyboardType.NumberPassword else KeyboardType.Password
+                        fun clean(s: String) = if (lockKind == 0) s.filter(Char::isDigit).take(10) else s.take(64)
+                        RWTextField(secret, { secret = clean(it); secretError = null }, if (lockKind == 0) "PIN (6–10 digits)" else "Password (8+ letters & numbers)", secret = true, keyboardType = kt)
+                        RWTextField(secretConfirm, { secretConfirm = clean(it); secretError = null }, "Confirm", secret = true, keyboardType = kt, isError = secretConfirm.isNotEmpty() && secretConfirm != secret)
+                        secretError?.let { Text(it, color = Palette.Coral) }
+                        Text("RandWise can't recover a forgotten password — only erase the app's data.", style = MaterialTheme.typography.bodySmall, color = Palette.Amber)
+                    }
                     else -> {
-                        StepTitle("Step 3 of 3", "Your safety net\n& first account")
+                        StepTitle("Step 3 of $lastStep", "Your safety net\n& first account")
                         MoneyField(buffer, { buffer = it }, "Safety buffer", supporting = "Never counted as spendable — keeps you clear of fees")
                         MoneyField(savings, { savings = it }, "Savings per pay cycle")
                         RWTextField(emergencyMonths, { emergencyMonths = it.filter(Char::isDigit).take(2) }, "Emergency fund goal (months)", keyboardType = KeyboardType.Number)
@@ -176,7 +229,11 @@ fun OnboardingScreen(vm: FinanceViewModel) {
                 PrimaryButton("Set up my profile", { step = 1 }, icon = Icons.AutoMirrored.Rounded.ArrowForward)
                 GhostButton("Explore with demo data", { vm.loadDemo() }, Modifier.fillMaxWidth())
             } else {
-                PrimaryButton(if (step < 3) "Continue" else "Start using RandWise", { if (step < 3) step++ else finish() }, enabled = canNext)
+                PrimaryButton(
+                    when { step < lastStep -> "Continue"; secret.isEmpty() -> "Skip & start using RandWise"; else -> "Save & start using RandWise" },
+                    { if (step < lastStep) step++ else finishWithLock() },
+                    enabled = canNext,
+                )
             }
         }
     }

@@ -48,7 +48,17 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.randwise.app.core.Money
+import com.randwise.app.data.model.Account
+import com.randwise.app.data.model.AccountType
+import com.randwise.app.data.model.BillFrequency
 import com.randwise.app.data.model.Bucket
+import com.randwise.app.domain.FinanceAnalyzer
+import com.randwise.app.domain.PayCycle
+import com.randwise.app.ui.components.SegmentedControl
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.mutableIntStateOf
+import java.time.LocalDate
 import com.randwise.app.data.model.Category
 import com.randwise.app.data.model.Debt
 import com.randwise.app.data.model.Goal
@@ -170,12 +180,18 @@ fun BudgetScreen(vm: FinanceViewModel) {
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).pressable({ editBill = bill }).padding(10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        DayBadge(bill.dueDay, if (occ?.paid == true) Palette.TextFaint else Palette.Amber)
+                        val nextDue = PayCycle.dueDatesBetween(bill, a.today, a.today.plusDays(400)).firstOrNull()
+                        DayBadge(
+                            if (bill.frequency == BillFrequency.MONTHLY) bill.dueDay else nextDue?.dayOfMonth ?: bill.dueDay,
+                            if (occ?.paid == true) Palette.TextFaint else Palette.Amber,
+                            label = when (bill.frequency) { BillFrequency.MONTHLY -> "DAY"; BillFrequency.WEEKLY -> "WEEKLY"; BillFrequency.YEARLY -> nextDue?.month?.name?.take(3) ?: "YEAR" },
+                        )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(bill.name, style = MaterialTheme.typography.titleSmall)
                             Text(
-                                occ?.let { if (it.paid) "Paid this cycle" else "Due ${it.dueDate.format(D)}" } ?: "Monthly",
+                                occ?.let { if (it.paid) "Paid this cycle" else "Due ${it.dueDate.format(D)}" }
+                                    ?: (bill.frequency.name.lowercase().replaceFirstChar { it.uppercase() } + (nextDue?.let { " · next ${it.format(D)}" } ?: "")),
                                 style = MaterialTheme.typography.bodySmall, color = if (occ?.paid == true) Palette.Mint else Palette.TextDim,
                             )
                         }
@@ -210,17 +226,22 @@ fun BudgetScreen(vm: FinanceViewModel) {
         item { EmergencyCard(a.emergency.monthsX100, a.emergency.targetMonths, a.emergency.saved, a.emergency.targetAmount, a.emergency.monthlyEssential) }
         s.goals.filter { !it.isEmergencyFund }.forEach { g ->
             item(key = "goal${g.id}") {
+                val saved = FinanceAnalyzer.goalProgress(g, a.accountBalances)
+                val linked = g.linkedAccountId?.let { id -> s.accounts.firstOrNull { it.id == id }?.name }
                 GlassCard(onClick = { editGoal = g }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        RingProgress(if (g.targetMinor > 0) g.savedMinor.toFloat() / g.targetMinor else 0f, Palette.Teal, Modifier.size(54.dp)) {
-                            Text("${Money.ratioBp(g.savedMinor, g.targetMinor) / 100}%", style = MaterialTheme.typography.labelMedium)
+                        RingProgress(if (g.targetMinor > 0) saved.toFloat() / g.targetMinor else 0f, Palette.Teal, Modifier.size(54.dp)) {
+                            Text("${Money.ratioBp(saved, g.targetMinor) / 100}%", style = MaterialTheme.typography.labelMedium)
                         }
                         Spacer(Modifier.width(14.dp))
                         Column(Modifier.weight(1f)) {
                             Text(g.name, style = MaterialTheme.typography.titleSmall)
-                            Text("${Money.formatWhole(g.savedMinor)} of ${Money.formatWhole(g.targetMinor)}", style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
+                            Text(
+                                "${Money.formatWhole(saved)} of ${Money.formatWhole(g.targetMinor)}" + (linked?.let { " · tracks $it" } ?: ""),
+                                style = MaterialTheme.typography.bodySmall, color = Palette.TextDim,
+                            )
                         }
-                        Text("${Money.formatWhole(g.targetMinor - g.savedMinor)} to go", style = MaterialTheme.typography.labelMedium, color = Palette.Teal)
+                        Text("${Money.formatWhole((g.targetMinor - saved).coerceAtLeast(0))} to go", style = MaterialTheme.typography.labelMedium, color = Palette.Teal)
                     }
                 }
             }
@@ -265,7 +286,7 @@ fun BudgetScreen(vm: FinanceViewModel) {
         )
     }
     editBill?.let { bill -> BillDialog(bill, s.categories, onDismiss = { editBill = null }, onSave = { vm.saveBill(it); editBill = null }, onDelete = { vm.deleteBill(it); editBill = null }) }
-    editGoal?.let { goal -> GoalDialog(goal, onDismiss = { editGoal = null }, onSave = { vm.saveGoal(it); editGoal = null }, onDelete = { vm.deleteGoal(it); editGoal = null }) }
+    editGoal?.let { goal -> GoalDialog(goal, s.accounts.filter { !it.archived }, onDismiss = { editGoal = null }, onSave = { vm.saveGoal(it); editGoal = null }, onDelete = { vm.deleteGoal(it); editGoal = null }) }
     editDebt?.let { debt -> DebtDialog(debt, onDismiss = { editDebt = null }, onSave = { vm.saveDebt(it); editDebt = null }, onDelete = { vm.deleteDebt(it); editDebt = null }) }
 }
 
@@ -322,13 +343,13 @@ private fun NewBudgetTile(modifier: Modifier, onClick: () -> Unit) {
 }
 
 @Composable
-private fun DayBadge(day: Int, accent: Color) {
+private fun DayBadge(day: Int, accent: Color, label: String = "DAY") {
     Column(
         Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(Palette.GlassStrong),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.fillMaxWidth().height(14.dp).background(accent.copy(alpha = 0.85f)), contentAlignment = Alignment.Center) {
-            Text("DAY", style = MaterialTheme.typography.labelSmall.copy(fontSize = androidx.compose.ui.unit.TextUnit(8f, androidx.compose.ui.unit.TextUnitType.Sp)), color = Palette.Ink)
+            Text(label, style = MaterialTheme.typography.labelSmall.copy(fontSize = androidx.compose.ui.unit.TextUnit(8f, androidx.compose.ui.unit.TextUnitType.Sp)), color = Palette.Ink)
         }
         Text("$day", style = MaterialTheme.typography.titleLarge.copy(fontFamily = Fonts.Display))
     }
@@ -436,21 +457,36 @@ private fun BillDialog(bill: RecurringBill, categories: List<Category>, onDismis
     var amount by remember { mutableStateOf(if (bill.expectedAmountMinor > 0) Money.toPlain(bill.expectedAmountMinor) else "") }
     var day by remember { mutableStateOf(bill.dueDay.toString()) }
     var cat by remember { mutableStateOf(bill.categoryId) }
+    val freqs = listOf(BillFrequency.MONTHLY, BillFrequency.WEEKLY, BillFrequency.YEARLY)
+    var freq by remember { mutableIntStateOf(freqs.indexOf(bill.frequency).coerceAtLeast(0)) }
+    var anchor by remember { mutableStateOf(bill.anchorDate?.let(LocalDate::ofEpochDay) ?: LocalDate.now()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (bill.id == 0L) "New bill" else "Edit bill") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 RWTextField(name, { name = it.take(40) }, "Name")
                 RWTextField(pattern, { pattern = it.uppercase().take(40) }, "Statement text to match", supporting = "Blank = use the name")
                 MoneyField(amount, { amount = it }, "Expected amount")
-                RWTextField(day, { day = it.filter(Char::isDigit).take(2) }, "Due day of month", keyboardType = KeyboardType.Number)
+                SegmentedControl(listOf("Monthly", "Weekly", "Yearly"), freq, { freq = it })
+                if (freqs[freq] == BillFrequency.MONTHLY) RWTextField(day, { day = it.filter(Char::isDigit).take(2) }, "Due day of month", keyboardType = KeyboardType.Number)
+                else DateField(anchor, { anchor = it }, label = "Next due date")
                 CategoryDropdown(categories.filter { it.bucket != Bucket.INCOME }, cat, { cat = it })
             }
         },
         confirmButton = {
             TextButton(
-                { onSave(bill.copy(name = name.trim(), merchantPattern = pattern.trim().ifEmpty { MerchantText.normalize(name) }, expectedAmountMinor = Money.parse(amount) ?: 0, dueDay = day.toIntOrNull()?.coerceIn(1, 31) ?: 1, categoryId = cat, isConfirmed = true)) },
+                {
+                    val f = freqs[freq]
+                    onSave(
+                        bill.copy(
+                            name = name.trim(), merchantPattern = pattern.trim().ifEmpty { MerchantText.normalize(name) }, expectedAmountMinor = Money.parse(amount) ?: 0,
+                            dueDay = if (f == BillFrequency.MONTHLY) day.toIntOrNull()?.coerceIn(1, 31) ?: 1 else anchor.dayOfMonth,
+                            frequency = f, anchorDate = if (f == BillFrequency.MONTHLY) null else anchor.toEpochDay(),
+                            categoryId = cat, isConfirmed = true,
+                        ),
+                    )
+                },
                 enabled = name.isNotBlank() && (Money.parse(amount) ?: 0) > 0,
             ) { Text("Save") }
         },
@@ -459,21 +495,29 @@ private fun BillDialog(bill: RecurringBill, categories: List<Category>, onDismis
 }
 
 @Composable
-private fun GoalDialog(goal: Goal, onDismiss: () -> Unit, onSave: (Goal) -> Unit, onDelete: (Goal) -> Unit) {
+private fun GoalDialog(goal: Goal, accounts: List<Account>, onDismiss: () -> Unit, onSave: (Goal) -> Unit, onDelete: (Goal) -> Unit) {
     var name by remember { mutableStateOf(goal.name) }
     var target by remember { mutableStateOf(if (goal.targetMinor > 0) Money.toPlain(goal.targetMinor) else "") }
     var saved by remember { mutableStateOf(Money.toPlain(goal.savedMinor)) }
     var add by remember { mutableStateOf("") }
     var emergency by remember { mutableStateOf(goal.isEmergencyFund) }
+    var linked by remember { mutableStateOf(goal.linkedAccountId) }
+    val noLink = Account(id = -1, name = "Don't link — I'll update it myself", type = AccountType.SAVINGS)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (goal.id == 0L) "New goal" else goal.name) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 RWTextField(name, { name = it.take(40) }, "Name")
                 MoneyField(target, { target = it }, "Target")
-                MoneyField(saved, { saved = it }, "Saved so far")
-                if (goal.id != 0L) MoneyField(add, { add = it }, "Add a contribution")
+                val options = listOf(noLink) + accounts
+                Dropdown("Track an account's balance", options, options.firstOrNull { it.id == (linked ?: -1L) }, { it.name }, { linked = it.id.takeIf { id -> id != -1L } })
+                if (linked == null) {
+                    MoneyField(saved, { saved = it }, "Saved so far")
+                    if (goal.id != 0L) MoneyField(add, { add = it }, "Add a contribution")
+                } else {
+                    Text("Progress follows the account's live balance automatically.", style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(emergency, { emergency = it })
                     Text("This is my emergency fund")
@@ -482,7 +526,7 @@ private fun GoalDialog(goal: Goal, onDismiss: () -> Unit, onSave: (Goal) -> Unit
         },
         confirmButton = {
             TextButton(
-                { onSave(goal.copy(name = name.trim(), targetMinor = Money.parse(target) ?: 0, savedMinor = (Money.parse(saved) ?: 0) + (Money.parse(add) ?: 0), isEmergencyFund = emergency)) },
+                { onSave(goal.copy(name = name.trim(), targetMinor = Money.parse(target) ?: 0, savedMinor = (Money.parse(saved) ?: 0) + (Money.parse(add) ?: 0), isEmergencyFund = emergency, linkedAccountId = linked)) },
                 enabled = name.isNotBlank() && (Money.parse(target) ?: 0) > 0,
             ) { Text("Save") }
         },
