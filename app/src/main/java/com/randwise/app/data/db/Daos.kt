@@ -11,6 +11,7 @@ import com.randwise.app.data.model.Account
 import com.randwise.app.data.model.Budget
 import com.randwise.app.data.model.Category
 import com.randwise.app.data.model.CategoryRule
+import com.randwise.app.data.model.ConsentRecord
 import com.randwise.app.data.model.Debt
 import com.randwise.app.data.model.Goal
 import com.randwise.app.data.model.RecurringBill
@@ -137,6 +138,15 @@ interface BillDao {
 
     @Delete
     suspend fun delete(bill: RecurringBill)
+}
+
+@Dao
+interface ConsentDao {
+    @Query("SELECT * FROM consent_records ORDER BY timestamp DESC")
+    fun observeAll(): Flow<List<ConsentRecord>>
+
+    @Insert
+    suspend fun insert(record: ConsentRecord)
 }
 
 @Dao

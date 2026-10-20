@@ -24,11 +24,7 @@ object BillSchedule {
         val cycleTx = transactions.filter { it.type == TxType.EXPENSE && cycle.containsEpochDay(it.date) }
         val out = mutableListOf<BillOccurrence>()
         for (bill in bills.filter { it.isConfirmed }) {
-            val dueDates = monthsSpanning(cycle.start, cycle.end)
-                .map { PayCycle.dueDateIn(it, bill.dueDay) }
-                .filter { it in cycle }
-                .distinct()
-                .sorted()
+            val dueDates = PayCycle.dueDatesBetween(bill, cycle.start, cycle.end).distinct().sorted()
             var payments = cycleTx.count { MerchantText.matches(it.merchant, bill.merchantPattern) }
             for (due in dueDates) {
                 out += BillOccurrence(bill, due, paid = payments > 0)
@@ -41,13 +37,7 @@ object BillSchedule {
     fun isBillPayment(tx: Transaction, bills: List<RecurringBill>): Boolean =
         tx.type == TxType.EXPENSE && bills.any { it.isConfirmed && MerchantText.matches(tx.merchant, it.merchantPattern) }
 
-    fun monthsSpanning(from: LocalDate, to: LocalDate): List<YearMonth> {
-        val out = mutableListOf<YearMonth>()
-        var ym = YearMonth.from(from)
-        val last = YearMonth.from(to)
-        while (!ym.isAfter(last)) { out += ym; ym = ym.plusMonths(1) }
-        return out
-    }
+    fun monthsSpanning(from: LocalDate, to: LocalDate): List<YearMonth> = PayCycle.monthsSpanning(from, to)
 }
 
 data class SafeToSpendResult(

@@ -48,7 +48,7 @@ object ContextBuilder {
             safeToSpendMinor = a.safeToSpend.safeToSpend,
             safeToSpendPerDayMinor = a.safeToSpend.perDay,
             safetyBufferMinor = profile.safetyBufferMinor,
-            monthlyIncomeMinor = profile.monthlyIncomeMinor,
+            monthlyIncomeMinor = profile.netPayMinor,
             cycleSpendMinor = a.cycleSpend,
             projectedCycleSpendMinor = a.projectedCycleSpend,
             categories = categories,

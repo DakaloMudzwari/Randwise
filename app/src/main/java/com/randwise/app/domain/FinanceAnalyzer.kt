@@ -1,7 +1,9 @@
 package com.randwise.app.domain
 
+import com.randwise.app.core.Money
 import com.randwise.app.data.model.Account
 import com.randwise.app.data.model.AccountType
+import com.randwise.app.data.model.BillFrequency
 import com.randwise.app.data.model.Budget
 import com.randwise.app.data.model.Bucket
 import com.randwise.app.data.model.Category
@@ -79,7 +81,7 @@ object FinanceAnalyzer {
 
     fun analyze(s: FinanceSnapshot, today: LocalDate): Analysis? {
         val profile = s.profile ?: return null
-        val cycle = PayCycle.forDate(today, profile.payday, profile.adjustPaydayForWeekend)
+        val cycle = PayCycle.forDate(today, PaySchedule.of(profile))
         val txs = s.transactions
         val cycleTx = txs.filter { cycle.containsEpochDay(it.date) && it.date <= today.toEpochDay() }
         val catById = s.categories.associateBy { it.id }
@@ -150,14 +152,15 @@ object FinanceAnalyzer {
         val recurring = RecurringBillDetector.detect(txs, s.bills)
         val behavior = BehaviorAnalyzer.analyze(today, cycle, txs, s.bills, recurring)
 
-        // Emergency coverage: essential spend averaged over the last 3 complete cycles, else confirmed bills.
+        // Emergency coverage: essential spend over the last 90 days as a monthly figure (works for any pay
+        // frequency), falling back to confirmed bills when there is no history yet.
         val essentialIds = s.categories.filter { it.isEssential || it.bucket == Bucket.FIXED }.map { it.id }.toSet()
-        val pastCycles = generateSequence(cycle.previous()) { it.previous() }.take(3).toList()
-        val essentialSpends = pastCycles.map { c -> Ledger.spend(txs.filter { c.containsEpochDay(it.date) && it.categoryId in essentialIds }) }
-            .filter { it > 0 }
-        val monthlyEssential = if (essentialSpends.isNotEmpty()) essentialSpends.sum() / essentialSpends.size
-        else s.bills.filter { it.isConfirmed }.sumOf { it.expectedAmountMinor }
-        val emergencySaved = s.goals.filter { it.isEmergencyFund }.sumOf { it.savedMinor }
+        val ninetyAgo = today.minusDays(90).toEpochDay()
+        val essentialTx = txs.filter { it.date >= ninetyAgo && it.date <= today.toEpochDay() && it.categoryId in essentialIds }
+        val historyDays = (today.toEpochDay() - (essentialTx.minOfOrNull { it.date } ?: today.toEpochDay())).coerceAtLeast(0)
+        val monthlyEssential = if (historyDays >= 28) Money.divRound(Ledger.spend(essentialTx) * 30, historyDays.coerceAtMost(90).coerceAtLeast(30))
+        else s.bills.filter { it.isConfirmed }.sumOf { monthlyEquivalent(it) }
+        val emergencySaved = s.goals.filter { it.isEmergencyFund }.sumOf { goalProgress(it, balances) }
         val emergency = EmergencyEngine.coverage(emergencySaved, monthlyEssential, profile.emergencyTargetMonths)
 
         val thisCum = cumulative(Ledger.dailySpend(txs, cycle.start.toEpochDay(), elapsed.toInt()))
@@ -185,6 +188,17 @@ object FinanceAnalyzer {
             cumulativeThisCycle = thisCum,
             cumulativePrevCycle = prevCum,
         )
+    }
+
+    /** A goal linked to an account tracks that account's live balance; otherwise the manual amount. */
+    fun goalProgress(goal: Goal, balances: List<AccountBalance>): Long =
+        goal.linkedAccountId?.let { id -> balances.firstOrNull { it.account.id == id }?.balance?.coerceAtLeast(0) } ?: goal.savedMinor
+
+    /** A bill's cost per month: weekly × 52/12, yearly ÷ 12. */
+    fun monthlyEquivalent(bill: RecurringBill): Long = when (bill.frequency) {
+        BillFrequency.MONTHLY -> bill.expectedAmountMinor
+        BillFrequency.WEEKLY -> Money.divRound(bill.expectedAmountMinor * 52, 12)
+        BillFrequency.YEARLY -> Money.divRound(bill.expectedAmountMinor, 12)
     }
 
     private fun cumulative(daily: LongArray): List<Long> {

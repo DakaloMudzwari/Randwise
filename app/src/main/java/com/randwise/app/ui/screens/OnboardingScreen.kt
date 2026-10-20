@@ -95,7 +95,7 @@ fun OnboardingScreen(vm: FinanceViewModel) {
         val profile = UserProfile(
             payday = payday.toIntOrNull()?.coerceIn(1, 31) ?: 25,
             adjustPaydayForWeekend = weekendAdjust,
-            monthlyIncomeMinor = Money.parse(income) ?: 0,
+            netPayMinor = Money.parse(income) ?: 0,
             safetyBufferMinor = Money.parse(buffer) ?: 0,
             plannedSavingsMinor = Money.parse(savings) ?: 0,
             emergencyTargetMonths = emergencyMonths.toIntOrNull()?.coerceIn(1, 24) ?: 3,

@@ -32,7 +32,7 @@ object DemoData {
     )
 
     fun build(today: LocalDate): Seed {
-        val profile = UserProfile(payday = 25, adjustPaydayForWeekend = true, monthlyIncomeMinor = 2_850_000, safetyBufferMinor = 100_000, plannedSavingsMinor = 300_000, emergencyTargetMonths = 3)
+        val profile = UserProfile(payday = 25, adjustPaydayForWeekend = true, netPayMinor = 2_850_000, safetyBufferMinor = 100_000, plannedSavingsMinor = 300_000, emergencyTargetMonths = 3)
         // A debit order that is still pending, so the demo shows bills being protected before payday.
         val pendingDay = today.plusDays(2).dayOfMonth
         val accounts = listOf(

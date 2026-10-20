@@ -4,6 +4,7 @@ import com.randwise.app.core.Money
 import com.randwise.app.data.model.RecurringBill
 import com.randwise.app.data.model.UserProfile
 import com.randwise.app.domain.PayCycle
+import com.randwise.app.domain.PaySchedule
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
@@ -68,10 +69,8 @@ object CashFlowForecaster {
     ): List<ScheduledEvent> {
         val end = today.plusDays(horizonDays.toLong())
         val out = mutableListOf<ScheduledEvent>()
-        val months = BillSchedule.monthsSpanning(today, end)
-        for (ym in months) {
-            val pay = PayCycle.paydayIn(ym, profile.payday, profile.adjustPaydayForWeekend)
-            if (pay.isAfter(today) && !pay.isAfter(end)) out += ScheduledEvent(pay, profile.monthlyIncomeMinor, "Salary")
+        for (pay in PayCycle.paydaysBetween(today, end, PaySchedule.of(profile))) {
+            out += ScheduledEvent(pay, profile.netPayMinor, "Salary")
         }
         val paidThisCycle = currentCycleOccurrences.filter { it.paid }.map { it.bill.id to it.dueDate }.toSet()
         for (occ in currentCycleOccurrences) {
@@ -80,9 +79,7 @@ object CashFlowForecaster {
             }
         }
         for (bill in bills.filter { it.isConfirmed }) {
-            for (ym in months) {
-                val due = PayCycle.dueDateIn(ym, bill.dueDay)
-                if (!due.isAfter(today) || due.isAfter(end)) continue
+            for (due in PayCycle.dueDatesBetween(bill, today.plusDays(1), end)) {
                 if ((bill.id to due) in paidThisCycle) continue
                 out += ScheduledEvent(due, -bill.expectedAmountMinor, bill.name)
             }

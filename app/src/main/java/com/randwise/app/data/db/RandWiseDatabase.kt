@@ -1,7 +1,9 @@
 package com.randwise.app.data.db
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
+import com.randwise.app.data.model.ConsentRecord
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.randwise.app.data.model.Account
@@ -18,12 +20,16 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 @Database(
     entities = [
         UserProfile::class, Account::class, Category::class, CategoryRule::class, Transaction::class,
-        Budget::class, RecurringBill::class, Debt::class, Goal::class,
+        Budget::class, RecurringBill::class, Debt::class, Goal::class, ConsentRecord::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
+    // v2: pay & bill frequencies, account-linked goals, POPIA consent log. Schemas live in app/schemas;
+    // every future change needs a migration plus a MigrationTest case — never destructive fallback.
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 abstract class RandWiseDatabase : RoomDatabase() {
+    abstract fun consentDao(): ConsentDao
     abstract fun profileDao(): ProfileDao
     abstract fun accountDao(): AccountDao
     abstract fun categoryDao(): CategoryDao

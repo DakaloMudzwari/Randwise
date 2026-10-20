@@ -8,6 +8,7 @@ import com.randwise.app.data.model.AccountType
 import com.randwise.app.data.model.Budget
 import com.randwise.app.data.model.Category
 import com.randwise.app.data.model.CategoryRule
+import com.randwise.app.data.model.ConsentRecord
 import com.randwise.app.data.model.Debt
 import com.randwise.app.data.model.Goal
 import com.randwise.app.data.model.RecurringBill
@@ -18,6 +19,7 @@ import com.randwise.app.data.model.UserProfile
 import com.randwise.app.domain.FinanceSnapshot
 import com.randwise.app.domain.MerchantText
 import com.randwise.app.domain.PayCycle
+import com.randwise.app.domain.PaySchedule
 import com.randwise.app.domain.engine.RecurringCandidate
 import com.randwise.app.importer.Categorizer
 import com.randwise.app.importer.Fingerprint
@@ -54,7 +56,14 @@ class FinanceRepository(private val db: RandWiseDatabase) {
     private val bills = db.billDao()
     private val plans = db.planDao()
 
+    private val consents = db.consentDao()
+
     val profile: Flow<UserProfile?> = profiles.observe()
+    val consentHistory: Flow<List<ConsentRecord>> = consents.observeAll()
+
+    /** POPIA: every grant/withdrawal is logged with the notice version the user saw. */
+    suspend fun recordConsent(type: String, granted: Boolean, policyVersion: String) =
+        consents.insert(ConsentRecord(type = type, granted = granted, policyVersion = policyVersion, timestamp = System.currentTimeMillis()))
 
     /** ~13 months of history is enough for every engine (cycles, recurring detection, trends). */
     val snapshot: Flow<FinanceSnapshot> = combine(
@@ -105,7 +114,7 @@ class FinanceRepository(private val db: RandWiseDatabase) {
             }
             bills.upsert(RecurringBill(name = name, merchantPattern = MerchantText.normalize(name), expectedAmountMinor = amount, dueDay = obligationDueDay, isConfirmed = true, categoryId = cat?.id))
         }
-        ensureBudgetsForCycle(PayCycle.forDate(LocalDate.now(), profile.payday, profile.adjustPaydayForWeekend))
+        ensureBudgetsForCycle(PayCycle.forDate(LocalDate.now(), PaySchedule.of(profile)))
     }
 
     suspend fun updateProfile(profile: UserProfile) = profiles.upsert(profile)
@@ -126,7 +135,7 @@ class FinanceRepository(private val db: RandWiseDatabase) {
         }
         seed.debts.forEach { plans.upsertDebt(it) }
         seed.goals.forEach { plans.upsertGoal(it) }
-        val cycle = PayCycle.forDate(today, seed.profile.payday, seed.profile.adjustPaydayForWeekend)
+        val cycle = PayCycle.forDate(today, PaySchedule.of(seed.profile))
         seed.budgets.forEach { (name, limit) -> cats[name]?.let { setBudget(it, cycle, limit) } }
         // Profile last: it is what flips the UI out of onboarding.
         profiles.upsert(seed.profile)
@@ -183,7 +192,10 @@ class FinanceRepository(private val db: RandWiseDatabase) {
         val existing = prints.chunked(500).flatMap { txs.existingFingerprints(it) }.toSet()
         val minDay = lines.minOf { it.date.toEpochDay() } - 1
         val maxDay = lines.maxOf { it.date.toEpochDay() } + 1
-        val nearby = txs.inRange(account.id, minDay, maxDay).filter { it.source == TxSource.MANUAL }
+        // Anything already stored for this account around these dates — manual entries, or the same
+        // transaction imported from a different file format whose description differs (CSV vs PDF).
+        val printSet = prints.toSet()
+        val nearby = txs.inRange(account.id, minDay, maxDay).filter { it.fingerprint !in printSet }
         val cats = categories.getAll()
         val rules = categories.getRules()
         return lines.mapIndexed { i, line ->
@@ -202,7 +214,7 @@ class FinanceRepository(private val db: RandWiseDatabase) {
             val category = if (type.isInternal) null
             else Categorizer.categorize(line.description, isCredit = type == TxType.INCOME, rules = rules, categories = cats)
             val dup = prints[i] in existing
-            val possible = !dup && nearby.any { kotlin.math.abs(it.date - line.date.toEpochDay()) <= 1 && it.signedAmountMinor == line.signedAmount }
+            val possible = !dup && nearby.any { kotlin.math.abs(it.date - line.date.toEpochDay()) <= 1 && it.signedAmountMinor == line.signedAmount && it.type.isInternal == type.isInternal }
             ImportRow(i, line.date, line.description, amount, type, category, prints[i], dup, possible, include = !dup && !possible)
         }
     }

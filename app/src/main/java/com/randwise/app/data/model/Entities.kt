@@ -1,5 +1,6 @@
 package com.randwise.app.data.model
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -35,18 +36,28 @@ enum class TxType(val balanceSign: Int) {
     val isInternal get() = this == TRANSFER_IN || this == TRANSFER_OUT || this == CARD_PAYMENT
 }
 
+/** How often the user is paid. Weekly and fortnightly pay are common for SA hourly and shift workers. */
+enum class PayFrequency(val days: Long?) { MONTHLY(null), FORTNIGHTLY(14), WEEKLY(7) }
+
+/** How often a bill repeats. Monthly bills use [RecurringBill.dueDay]; others use [RecurringBill.anchorDate]. */
+enum class BillFrequency { WEEKLY, MONTHLY, YEARLY }
+
 @Entity(tableName = "user_profile")
 data class UserProfile(
     @PrimaryKey val id: Long = 1,
-    /** Day of month salary lands (1..31; clamped to month length). */
+    /** Monthly pay: day of month salary lands (1..31; clamped to month length). */
     val payday: Int,
     /** SA employers usually pay on the preceding Friday if payday falls on a weekend. */
     val adjustPaydayForWeekend: Boolean = true,
     val currency: String = "ZAR",
-    val monthlyIncomeMinor: Long,
+    /** Take-home pay received on each payday (per month, fortnight or week depending on [payFrequency]). */
+    @ColumnInfo(name = "monthlyIncomeMinor") val netPayMinor: Long,
     val safetyBufferMinor: Long,
     val plannedSavingsMinor: Long = 0,
     val emergencyTargetMonths: Int = 3,
+    @ColumnInfo(defaultValue = "MONTHLY") val payFrequency: PayFrequency = PayFrequency.MONTHLY,
+    /** Weekly / fortnightly pay: epoch day of any known payday; later paydays repeat from it. */
+    val payAnchorDate: Long? = null,
 )
 
 @Entity(tableName = "accounts")
@@ -132,6 +143,9 @@ data class RecurringBill(
     /** Detected bills start unconfirmed until the user accepts them. */
     val isConfirmed: Boolean,
     val categoryId: Long? = null,
+    @ColumnInfo(defaultValue = "MONTHLY") val frequency: BillFrequency = BillFrequency.MONTHLY,
+    /** Weekly / yearly bills: epoch day of one due date; others repeat from it. */
+    val anchorDate: Long? = null,
 )
 
 @Entity(tableName = "debts")
@@ -153,4 +167,18 @@ data class Goal(
     val isEmergencyFund: Boolean = false,
     /** Optional epoch day. */
     val targetDate: Long? = null,
+    /** When set, progress follows this account's live balance instead of [savedMinor]. */
+    val linkedAccountId: Long? = null,
+)
+
+/** POPIA: an auditable record of every consent the user grants or withdraws. */
+@Entity(tableName = "consent_records")
+data class ConsentRecord(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val type: String,
+    val granted: Boolean,
+    /** Version of the privacy notice the user saw. */
+    val policyVersion: String,
+    /** Epoch millis. */
+    val timestamp: Long,
 )

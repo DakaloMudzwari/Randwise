@@ -212,7 +212,7 @@ private fun ReviewRow(row: ImportRow, categories: List<Category>, importVm: Impo
                 }
             }
             if (row.isDuplicate) Text("Already imported", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            else if (row.possibleDuplicate) Text("Possible duplicate of a manual entry", style = MaterialTheme.typography.labelSmall, color = RW.colors.warning)
+            else if (row.possibleDuplicate) Text("Possible duplicate — same amount already recorded within a day",style = MaterialTheme.typography.labelSmall, color = RW.colors.warning)
         }
         val signed = if (row.type.balanceSign > 0) row.amountMinor else -row.amountMinor
         Text(
