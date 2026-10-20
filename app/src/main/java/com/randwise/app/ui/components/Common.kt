@@ -71,6 +71,7 @@ import com.randwise.app.core.Money
 import com.randwise.app.domain.engine.BudgetStatus
 import com.randwise.app.domain.engine.Severity
 import com.randwise.app.ui.theme.Fonts
+import com.randwise.app.ui.theme.LocalReduceMotion
 import com.randwise.app.ui.theme.MoneyStyle
 import com.randwise.app.ui.theme.Palette
 import com.randwise.app.ui.theme.RW
@@ -86,9 +87,13 @@ import kotlin.math.abs
 @Composable
 fun AuroraBackground(modifier: Modifier = Modifier, intensity: Float = 1f) {
     val t = rememberInfiniteTransition(label = "aurora")
-    val a by t.animateFloat(0f, 1f, infiniteRepeatable(tween(14_000, easing = LinearEasing), RepeatMode.Reverse), label = "a")
-    val b by t.animateFloat(0f, 1f, infiniteRepeatable(tween(19_000, easing = LinearEasing), RepeatMode.Reverse), label = "b")
+    val reduce = LocalReduceMotion.current
+    val aState = t.animateFloat(0f, 1f, infiniteRepeatable(tween(14_000, easing = LinearEasing), RepeatMode.Reverse), label = "a")
+    val bState = t.animateFloat(0f, 1f, infiniteRepeatable(tween(19_000, easing = LinearEasing), RepeatMode.Reverse), label = "b")
     Canvas(modifier.fillMaxSize().background(Palette.Navy950)) {
+        // Read in the draw phase so the drift only redraws, never recomposes.
+        val a = if (reduce) 0.5f else aState.value
+        val b = if (reduce) 0.5f else bState.value
         val w = size.width
         val h = size.height
         fun blob(center: Offset, radius: Float, color: Color, alpha: Float) = drawCircle(
@@ -117,6 +122,7 @@ fun Modifier.pressable(onClick: () -> Unit, enabled: Boolean = true): Modifier =
 
 /** Fade + rise entrance, staggered by [index]. */
 fun Modifier.enterAnimation(index: Int = 0): Modifier = composed {
+    if (LocalReduceMotion.current) return@composed this
     val progress = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(40L * index.coerceAtMost(10))
@@ -259,7 +265,8 @@ fun MoneyText(
 @Composable
 fun AnimatedMoney(minor: Long, style: TextStyle, color: Color = Palette.Text, modifier: Modifier = Modifier) {
     val anim = remember { Animatable(0f) }
-    LaunchedEffect(minor) { anim.animateTo(minor.toFloat(), tween(1100, easing = FastOutSlowInEasing)) }
+    val reduce = LocalReduceMotion.current
+    LaunchedEffect(minor) { if (reduce) anim.snapTo(minor.toFloat()) else anim.animateTo(minor.toFloat(), tween(1100, easing = FastOutSlowInEasing)) }
     val shown = if (abs(anim.value - minor) < 100f) minor else anim.value.toLong()
     Text(Money.formatWhole(shown), style = style.merge(MoneyStyle), color = color, modifier = modifier, maxLines = 1)
 }

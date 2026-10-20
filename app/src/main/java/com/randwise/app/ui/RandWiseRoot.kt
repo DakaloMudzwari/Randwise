@@ -102,7 +102,8 @@ fun RandWiseRoot(container: AppContainer) {
 private fun MainShell(vm: FinanceViewModel, factory: ViewModelProvider.Factory) {
     val nav = rememberNavController()
     val snackbar = remember { SnackbarHostState() }
-    var showAdd by rememberSaveable { mutableStateOf(false) }
+    // null = sheet hidden; otherwise the mode it opens in (0 expense … 3 transfer).
+    var addMode by rememberSaveable { mutableStateOf<Int?>(null) }
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
     val showNav = hubs.any { it.route == route }
@@ -136,14 +137,14 @@ private fun MainShell(vm: FinanceViewModel, factory: ViewModelProvider.Factory) 
         ) {
             composable("home") {
                 HomeScreen(
-                    vm, onAdd = { showAdd = true }, onOpenLedger = { nav.navigate("ledger/0") },
+                    vm, onAdd = { addMode = 0 }, onTransfer = { addMode = 3 }, onOpenLedger = { nav.navigate("ledger/0") },
                     onImport = { go("accounts") }, onCoach = { go("insights") },
                 )
             }
             composable("insights") { InsightsScreen(vm, viewModel(factory = factory)) }
             composable("budget") { BudgetScreen(vm) }
             composable("accounts") {
-                AccountsScreen(vm, onImport = { id -> nav.navigate("import/$id") }, onLedger = { id -> nav.navigate("ledger/$id") }, onAdd = { showAdd = true })
+                AccountsScreen(vm, onImport = { id -> nav.navigate("import/$id") }, onLedger = { id -> nav.navigate("ledger/$id") }, onAdd = { addMode = 0 })
             }
             composable("settings") { SettingsScreen(vm) }
             composable("import/{accountId}", listOf(navArgument("accountId") { type = NavType.LongType })) { entry ->
@@ -168,5 +169,5 @@ private fun MainShell(vm: FinanceViewModel, factory: ViewModelProvider.Factory) 
         }
     }
 
-    if (showAdd) AddTransactionSheet(vm, onDismiss = { showAdd = false })
+    addMode?.let { m -> AddTransactionSheet(vm, initialMode = m, onDismiss = { addMode = null }) }
 }

@@ -50,6 +50,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.randwise.app.core.Money
 import com.randwise.app.ui.theme.Fonts
+import com.randwise.app.ui.theme.LocalReduceMotion
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.randwise.app.ui.theme.Palette
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -72,7 +75,11 @@ fun SegmentedGauge(
     content: @Composable () -> Unit,
 ) {
     val anim = remember { Animatable(0f) }
-    LaunchedEffect(fraction) { anim.animateTo(fraction.coerceIn(0f, 1f), tween(1300, easing = FastOutSlowInEasing)) }
+    val reduce = LocalReduceMotion.current
+    LaunchedEffect(fraction) {
+        val target = fraction.coerceIn(0f, 1f)
+        if (reduce) anim.snapTo(target) else anim.animateTo(target, tween(1300, easing = FastOutSlowInEasing))
+    }
     Box(modifier, contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val sweep = 260f
@@ -117,10 +124,16 @@ fun PaydayRunway(start: LocalDate, nextPayday: LocalDate, today: LocalDate, pins
     val total = ChronoUnit.DAYS.between(start, nextPayday).toFloat().coerceAtLeast(1f)
     val elapsed = ChronoUnit.DAYS.between(start, today).toFloat().coerceIn(0f, total)
     val pulse = rememberInfiniteTransition(label = "runway").animateFloat(0.4f, 1f, infiniteRepeatable(tween(1200), RepeatMode.Reverse), label = "p")
+    val reduce = LocalReduceMotion.current
     val measurer = rememberTextMeasurer()
     val labelStyle = TextStyle(fontFamily = Fonts.Body, fontSize = 10.sp, color = Palette.TextDim)
     val moneyStyle = TextStyle(fontFamily = Fonts.Display, fontSize = 11.sp, color = Palette.Text)
-    Canvas(modifier.fillMaxWidth().height(96.dp)) {
+    // Spoken equivalent of the timeline for screen readers.
+    val fmt = java.time.format.DateTimeFormatter.ofPattern("d MMMM")
+    val unpaid = pins.filter { !it.paid }
+    val summary = "Pay cycle from ${start.format(fmt)} to ${nextPayday.format(fmt)}, day ${elapsed.toInt() + 1} of ${total.toInt()}. " +
+        if (unpaid.isEmpty()) "No unpaid bills before payday." else unpaid.joinToString(prefix = "Still to pay: ") { "${it.label} ${Money.formatWhole(it.amount)} on ${it.date.format(fmt)}" }
+    Canvas(modifier.fillMaxWidth().height(96.dp).semantics { contentDescription = summary }) {
         val y = size.height * 0.62f
         val pad = 8.dp.toPx()
         val w = size.width - pad * 2
@@ -155,7 +168,7 @@ fun PaydayRunway(start: LocalDate, nextPayday: LocalDate, today: LocalDate, pins
         }
         // Today
         val tx = x(elapsed)
-        drawCircle(Palette.Mint.copy(alpha = 0.25f * pulse.value), 12.dp.toPx(), Offset(tx, y))
+        drawCircle(Palette.Mint.copy(alpha = 0.25f * (if (reduce) 0.7f else pulse.value)), 12.dp.toPx(), Offset(tx, y))
         drawCircle(Palette.White, 5.dp.toPx(), Offset(tx, y))
         drawLabel(measurer, "Today", labelStyle.copy(color = Palette.Mint), tx, y + 18.dp.toPx(), size.width)
         // Payday flag
@@ -252,11 +265,19 @@ fun LineChart(
     reference: Long? = null,
     referenceColor: Color = Palette.Amber,
     height: Dp = 170.dp,
+    /** Spoken summary for screen readers; defaults to each series' start, end, low and high. */
+    contentDescription: String? = null,
 ) {
     val anim = remember { Animatable(0f) }
-    LaunchedEffect(series.map { it.values.size }) { anim.snapTo(0f); anim.animateTo(1f, tween(1200, easing = FastOutSlowInEasing)) }
+    val reduce = LocalReduceMotion.current
+    LaunchedEffect(series.map { it.values.size }) {
+        if (reduce) anim.snapTo(1f) else { anim.snapTo(0f); anim.animateTo(1f, tween(1200, easing = FastOutSlowInEasing)) }
+    }
+    val summary = contentDescription ?: series.filter { it.values.isNotEmpty() }.joinToString(". ") { s ->
+        "${s.label}: from ${Money.formatWhole(s.values.first())} to ${Money.formatWhole(s.values.last())}, lowest ${Money.formatWhole(s.values.min())}, highest ${Money.formatWhole(s.values.max())}"
+    } + (reference?.let { ". Safety buffer ${Money.formatWhole(it)}" } ?: "")
     Column(modifier) {
-        Canvas(Modifier.fillMaxWidth().height(height)) {
+        Canvas(Modifier.fillMaxWidth().height(height).semantics { this.contentDescription = summary }) {
             val all = series.flatMap { it.values } + listOfNotNull(reference) + 0L
             val max = all.max().coerceAtLeast(1)
             val min = all.min()
@@ -367,10 +388,12 @@ fun StackedBar(segments: List<BarSegment>, modifier: Modifier = Modifier, height
 @Composable
 fun CoachOrb(modifier: Modifier = Modifier, thinking: Boolean = false) {
     val t = rememberInfiniteTransition(label = "orb")
-    val spin by t.animateFloat(0f, 360f, infiniteRepeatable(tween(if (thinking) 1800 else 7000, easing = LinearEasing)), label = "spin")
-    val breathe by t.animateFloat(0.92f, 1.04f, infiniteRepeatable(tween(2200), RepeatMode.Reverse), label = "breathe")
+    val spinState = t.animateFloat(0f, 360f, infiniteRepeatable(tween(if (thinking) 1800 else 7000, easing = LinearEasing)), label = "spin")
+    val breatheState = t.animateFloat(0.92f, 1.04f, infiniteRepeatable(tween(2200), RepeatMode.Reverse), label = "breathe")
+    val reduce = LocalReduceMotion.current
     Canvas(modifier) {
-        val r = size.minDimension / 2 * breathe
+        val spin = if (reduce) 210f else spinState.value
+        val r = size.minDimension / 2 * (if (reduce) 1f else breatheState.value)
         val c = Offset(size.width / 2, size.height / 2)
         drawCircle(Brush.radialGradient(listOf(Palette.Mint.copy(alpha = 0.35f), Color.Transparent), c, r * 1.5f), r * 1.5f, c)
         rotate(spin, c) {
@@ -388,7 +411,8 @@ fun TypingDots(modifier: Modifier = Modifier, color: Color = Palette.Mint) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         repeat(3) { i ->
             val a by t.animateFloat(0.25f, 1f, infiniteRepeatable(tween(600, delayMillis = i * 160), RepeatMode.Reverse), label = "d$i")
-            Box(Modifier.size(8.dp).clip(CircleShape).background(color.copy(alpha = a)))
+            val alpha = if (LocalReduceMotion.current) 0.7f else a
+            Box(Modifier.size(8.dp).clip(CircleShape).background(color.copy(alpha = alpha)))
         }
     }
 }

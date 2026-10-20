@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,6 +36,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,21 +91,22 @@ import java.time.temporal.ChronoUnit
 private val DAY_FMT = DateTimeFormatter.ofPattern("d MMM")
 
 @Composable
-fun HomeScreen(vm: FinanceViewModel, onAdd: () -> Unit, onOpenLedger: () -> Unit, onImport: () -> Unit, onCoach: () -> Unit) {
+fun HomeScreen(vm: FinanceViewModel, onAdd: () -> Unit, onTransfer: () -> Unit, onOpenLedger: () -> Unit, onImport: () -> Unit, onCoach: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val a = state.analysis ?: return
     val cats = state.snapshot.categories.associateBy { it.id }
     val dueSoon = a.safeToSpend.unpaidBills.count { ChronoUnit.DAYS.between(a.today, it.dueDate) <= 2 }
+    var showAlerts by remember { mutableStateOf(false) }
 
     LazyColumn(
         contentPadding = PaddingValues(top = 8.dp, bottom = NavClearance),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        item { Box(Modifier.gutter()) { TopBar(a.today, dueSoon) } }
+        item { Box(Modifier.gutter()) { TopBar(a.today, dueSoon) { showAlerts = true } } }
         item { Hero(a, Modifier.gutter().enterAnimation(0)) }
         item { Composition(a, Modifier.gutter().enterAnimation(1)) }
-        item { QuickActions(onAdd, onImport, onCoach, Modifier.gutter().enterAnimation(2)) }
+        item { QuickActions(onAdd, onTransfer, onImport, onCoach, Modifier.gutter().enterAnimation(2)) }
         item { Runway(a, Modifier.gutter().enterAnimation(3)) }
 
         val insights = a.behavior.insights.sortedByDescending { it.severity.ordinal }
@@ -150,10 +156,49 @@ fun HomeScreen(vm: FinanceViewModel, onAdd: () -> Unit, onOpenLedger: () -> Unit
             AdBanner(Modifier.gutter())
         }
     }
+
+    if (showAlerts) AlertsSheet(a) { showAlerts = false }
+}
+
+/** Everything that needs attention, in one place: imminent bills, budgets at risk, behaviour warnings. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun AlertsSheet(a: Analysis, onDismiss: () -> Unit) {
+    data class Alert(val icon: ImageVector, val color: Color, val title: String, val body: String)
+    val alerts = buildList {
+        a.safeToSpend.unpaidBills.filter { ChronoUnit.DAYS.between(a.today, it.dueDate) <= 7 }.forEach { occ ->
+            val d = ChronoUnit.DAYS.between(a.today, occ.dueDate)
+            add(Alert(Icons.Rounded.CalendarMonth, if (d <= 2) Palette.Amber else Palette.Sky, "${occ.bill.name} · ${Money.formatWhole(occ.bill.expectedAmountMinor)}",
+                when { d < 0 -> "Overdue since ${occ.dueDate.format(DAY_FMT)}"; d == 0L -> "Due today"; d == 1L -> "Due tomorrow"; else -> "Due in $d days (${occ.dueDate.format(DAY_FMT)})" }))
+        }
+        if (a.safeToSpend.safeToSpend < 0) add(Alert(Icons.Rounded.WarningAmber, Palette.Coral, "Below your safety buffer", "Safe-to-spend is ${Money.formatWhole(a.safeToSpend.safeToSpend)} with ${a.safeToSpend.daysUntilPayday} days to payday."))
+        a.budgetLines.filter { it.status == com.randwise.app.domain.engine.BudgetStatus.OVER || it.status == com.randwise.app.domain.engine.BudgetStatus.PROJECTED_OVER }.forEach {
+            add(Alert(Icons.Rounded.TrendingUp, Palette.Amber, "${it.category.name} budget", if (it.remaining < 0) "Over by ${Money.formatWhole(-it.remaining)}" else "Heading for ${Money.formatWhole(it.projected)} of ${Money.formatWhole(it.limit)}"))
+        }
+        a.behavior.insights.filter { it.severity == Severity.CRITICAL || it.severity == Severity.WARNING }.forEach {
+            add(Alert(Icons.Rounded.Lightbulb, severityColor(it.severity), it.title, it.body))
+        }
+    }
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Palette.Navy900) {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Alerts", style = MaterialTheme.typography.headlineSmall)
+            if (alerts.isEmpty()) EmptyState("Nothing needs your attention", "No bills due this week and every budget is on track.", icon = Icons.Rounded.CalendarMonth)
+            alerts.forEach { al ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
+                    IconBadge(al.icon, al.color, size = 36.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(al.title, style = MaterialTheme.typography.titleSmall)
+                        Text(al.body, style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
-private fun TopBar(today: LocalDate, dueSoon: Int) {
+private fun TopBar(today: LocalDate, dueSoon: Int, onAlerts: () -> Unit) {
     val hour = LocalTime.now().hour
     val greeting = when (hour) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening" }
     Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -166,8 +211,11 @@ private fun TopBar(today: LocalDate, dueSoon: Int) {
             Text(today.format(DateTimeFormatter.ofPattern("EEEE, d MMMM")), style = MaterialTheme.typography.titleMedium)
         }
         Box {
-            Box(Modifier.size(44.dp).clip(CircleShape).background(Palette.Glass).border(1.dp, Palette.Hairline, CircleShape), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.NotificationsNone, "Alerts", tint = Palette.Text)
+            Box(
+                Modifier.size(48.dp).clip(CircleShape).background(Palette.Glass).border(1.dp, Palette.Hairline, CircleShape).pressable(onAlerts),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.NotificationsNone, if (dueSoon > 0) "Alerts, $dueSoon bills due soon" else "Alerts", tint = Palette.Text)
             }
             if (dueSoon > 0) Box(
                 Modifier.align(Alignment.TopEnd).offset(2.dp, (-2).dp).size(18.dp).clip(CircleShape).background(Palette.Amber),
@@ -188,7 +236,7 @@ private fun Hero(a: Analysis, modifier: Modifier) {
         else -> Palette.Mint
     }
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        SegmentedGauge(fraction, accent, Modifier.size(300.dp)) {
+        SegmentedGauge(fraction, accent, Modifier.size(300.dp).semantics(mergeDescendants = true) {}) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Eyebrow("Safe to spend", Palette.TextDim)
                 Spacer(Modifier.height(4.dp))
@@ -242,10 +290,10 @@ private fun Composition(a: Analysis, modifier: Modifier) {
 }
 
 @Composable
-private fun QuickActions(onAdd: () -> Unit, onImport: () -> Unit, onCoach: () -> Unit, modifier: Modifier) {
+private fun QuickActions(onAdd: () -> Unit, onTransfer: () -> Unit, onImport: () -> Unit, onCoach: () -> Unit, modifier: Modifier) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         QuickAction("Add", Icons.Rounded.Add, primary = true, onClick = onAdd)
-        QuickAction("Transfer", Icons.Rounded.SwapHoriz, onClick = onAdd)
+        QuickAction("Transfer", Icons.Rounded.SwapHoriz, onClick = onTransfer)
         QuickAction("Import", Icons.Rounded.UploadFile, onClick = onImport)
         QuickAction("Ask coach", Icons.Rounded.AutoAwesome, onClick = onCoach)
     }
@@ -287,7 +335,7 @@ private fun Runway(a: Analysis, modifier: Modifier) {
 private fun InsightCard(severity: Severity, title: String, body: String) {
     val c = severityColor(severity)
     Column(
-        Modifier.width(272.dp).height(150.dp).clip(RoundedCornerShape(26.dp))
+        Modifier.width(272.dp).heightIn(min = 150.dp).clip(RoundedCornerShape(26.dp))
             .background(Brush.linearGradient(listOf(c.copy(alpha = 0.22f), Palette.Navy900.copy(alpha = 0.6f))))
             .border(1.dp, c.copy(alpha = 0.25f), RoundedCornerShape(26.dp))
             .padding(18.dp),

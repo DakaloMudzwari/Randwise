@@ -130,12 +130,23 @@ private val MidnightScheme = darkColorScheme(
     scrim = Color(0xCC000000),
 )
 
+/**
+ * True when the user turned on Android's "Remove animations" (animator duration scale 0).
+ * Decorative motion — aurora drift, orb spin, count-ups, entrance slides — then renders static.
+ */
+val LocalReduceMotion = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 @Composable
 fun RandWiseTheme(content: @Composable () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val reduceMotion = androidx.compose.runtime.remember {
+        android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }
     MaterialTheme(colorScheme = MidnightScheme, typography = AppTypography) {
         // Screens draw straight onto the aurora (no Surface), so set the default text colour here.
         androidx.compose.runtime.CompositionLocalProvider(
             androidx.compose.material3.LocalContentColor provides Palette.Text,
+            LocalReduceMotion provides reduceMotion,
             content = content,
         )
     }

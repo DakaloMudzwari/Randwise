@@ -45,11 +45,11 @@ private val modes = listOf("Expense", "Income", "Refund", "Transfer")
 /** Quick Add: manual ledger entry for F02. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddTransactionSheet(vm: FinanceViewModel, onDismiss: () -> Unit) {
+fun AddTransactionSheet(vm: FinanceViewModel, onDismiss: () -> Unit, initialMode: Int = 0) {
     val state by vm.state.collectAsStateWithLifecycle()
     val accounts = state.snapshot.accounts.filter { !it.archived }
     val categories = state.snapshot.categories
-    var mode by remember { mutableIntStateOf(0) }
+    var mode by remember { mutableIntStateOf(initialMode) }
     var account by remember { mutableStateOf(accounts.firstOrNull()) }
     var toAccount by remember { mutableStateOf<Account?>(accounts.getOrNull(1)) }
     var amount by remember { mutableStateOf("") }

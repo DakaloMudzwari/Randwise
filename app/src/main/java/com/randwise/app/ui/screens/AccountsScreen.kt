@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -189,15 +192,17 @@ fun iconFor(t: AccountType): ImageVector = when (t) {
 private fun BankCard(ab: AccountBalance, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(28.dp)
     Box(
-        modifier.width(300.dp).height(186.dp).pressable(onClick).clip(shape).background(cardBrush(ab.account.type))
-            .border(1.dp, Color.White.copy(alpha = 0.14f), shape),
+        // Min height, not fixed: the card grows instead of clipping at large font sizes.
+        modifier.width(300.dp).heightIn(min = 186.dp).pressable(onClick).clip(shape).background(cardBrush(ab.account.type))
+            .border(1.dp, Color.White.copy(alpha = 0.14f), shape)
+            .semantics(mergeDescendants = true) { contentDescription = "${ab.account.name}, ${ab.account.type.name.replace('_', ' ').lowercase()}, balance ${Money.format(ab.balance)}" },
     ) {
-        Canvas(Modifier.fillMaxSize()) {
+        Canvas(Modifier.matchParentSize()) {
             drawCircle(Color.White.copy(alpha = 0.07f), size.width * 0.55f, Offset(size.width * 1.02f, -size.height * 0.1f))
             drawCircle(Color.White.copy(alpha = 0.05f), size.width * 0.4f, Offset(size.width * 0.95f, size.height * 1.15f))
             drawRect(Brush.linearGradient(listOf(Color.White.copy(alpha = 0.10f), Color.Transparent), Offset.Zero, Offset(size.width * 0.6f, size.height)))
         }
-        Column(Modifier.fillMaxSize().padding(20.dp)) {
+        Column(Modifier.fillMaxWidth().heightIn(min = 186.dp).padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("RANDWISE", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
                 Icon(iconFor(ab.account.type), null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(22.dp))
@@ -208,7 +213,7 @@ private fun BankCard(ab: AccountBalance, modifier: Modifier, onClick: () -> Unit
                 Modifier.size(38.dp, 28.dp).clip(RoundedCornerShape(7.dp))
                     .background(Brush.linearGradient(listOf(Color(0xFFE8D9A8), Color(0xFFB59A55)))),
             )
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.heightIn(min = 34.dp).weight(1f))
             HeroAmount(ab.balance, size = 28, color = Color.White)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(ab.account.name, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.9f), modifier = Modifier.weight(1f), maxLines = 1)
@@ -221,7 +226,7 @@ private fun BankCard(ab: AccountBalance, modifier: Modifier, onClick: () -> Unit
 @Composable
 private fun AddCard(onClick: () -> Unit) {
     Column(
-        Modifier.width(140.dp).height(186.dp).pressable(onClick).drawBehind {
+        Modifier.width(140.dp).heightIn(min = 186.dp).pressable(onClick).drawBehind {
             drawRoundRect(Palette.TextFaint, style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))), cornerRadius = CornerRadius(28.dp.toPx()))
         },
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
@@ -235,7 +240,7 @@ private fun AddCard(onClick: () -> Unit) {
 @Composable
 private fun DropZone(modifier: Modifier, onClick: () -> Unit) {
     Column(
-        modifier.fillMaxWidth().height(190.dp).pressable(onClick)
+        modifier.fillMaxWidth().heightIn(min = 190.dp).pressable(onClick)
             .clip(RoundedCornerShape(28.dp))
             .background(Brush.verticalGradient(listOf(Palette.Emerald.copy(alpha = 0.10f), Color.Transparent)))
             .drawBehind {

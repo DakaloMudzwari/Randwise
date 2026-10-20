@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -213,7 +214,7 @@ fun BudgetScreen(vm: FinanceViewModel) {
                         }
                         Pill("Add", Palette.Mint, Modifier.pressable({ vm.confirmCandidate(c) }), filled = true)
                         Spacer(Modifier.width(6.dp))
-                        Box(Modifier.size(32.dp).clip(CircleShape).pressable({ vm.dismissCandidate(c) }), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(48.dp).clip(CircleShape).pressable({ vm.dismissCandidate(c) }), contentAlignment = Alignment.Center) {
                             Icon(Icons.Rounded.Close, "Dismiss", tint = Palette.TextFaint, modifier = Modifier.size(18.dp))
                         }
                     }
@@ -293,7 +294,7 @@ fun BudgetScreen(vm: FinanceViewModel) {
 @Composable
 private fun AddChip(onClick: () -> Unit) {
     Box(
-        Modifier.size(38.dp).clip(CircleShape).background(Palette.GlassStrong).border(1.dp, Palette.Hairline, CircleShape).pressable(onClick),
+        Modifier.size(48.dp).clip(CircleShape).background(Palette.GlassStrong).border(1.dp, Palette.Hairline, CircleShape).pressable(onClick),
         contentAlignment = Alignment.Center,
     ) { Icon(Icons.Rounded.Add, "Add", tint = Palette.Mint, modifier = Modifier.size(20.dp)) }
 }
@@ -327,7 +328,7 @@ private fun BudgetTile(line: BudgetLine, modifier: Modifier, onClick: () -> Unit
 @Composable
 private fun NewBudgetTile(modifier: Modifier, onClick: () -> Unit) {
     Column(
-        modifier.height(172.dp).pressable(onClick).drawBehind {
+        modifier.heightIn(min = 172.dp).pressable(onClick).drawBehind {
             drawRoundRect(
                 Palette.TextFaint, style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 10f))),
                 cornerRadius = CornerRadius(28.dp.toPx()),
