@@ -33,7 +33,7 @@ jobs:
           path: app/build/reports/tests/testDebugUnitTest
 
   gateway:
-    name: Gateway — .NET build
+    name: Gateway — .NET build & tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -42,3 +42,5 @@ jobs:
         with:
           dotnet-version: 10.0.x
       - run: dotnet build backend/RandWise.Gateway -c Release
+      - name: Gateway tests (answer grounding, sanitiser)
+        run: dotnet test backend/RandWise.Gateway.Tests -c Release

@@ -38,7 +38,29 @@ public sealed class GeminiCoachService(HttpClient http, GeminiOptions options, I
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    public const string UnverifiedWarning =
+        "Some figures in this answer couldn't be verified against your RandWise data — check them in the app before acting.";
+
+    /// <summary>
+    /// Asks Gemini, then checks every rand amount in the answer against the facts. One corrective retry
+    /// if the model invented a figure; if it still can't stay grounded, the answer is flagged.
+    /// </summary>
     public async Task<CoachResponse> AskAsync(CoachRequest request, CancellationToken ct)
+    {
+        var first = await GenerateAsync(request, correction: null, ct);
+        var bad = AnswerGrounding.Ungrounded(first.Answer, first.Highlights, request);
+        if (bad.Count == 0) return first;
+
+        log.LogInformation("Ungrounded amounts in answer ({Count}); retrying", bad.Count);
+        var amounts = string.Join(", ", bad.Select(c => $"R{c / 100}"));
+        var second = await GenerateAsync(request, $"Your previous answer used amounts that are not in FACTS ({amounts}). " +
+            "Answer again using ONLY amounts that appear in FACTS, exactly as given. Do not calculate new amounts.", ct);
+        return AnswerGrounding.Ungrounded(second.Answer, second.Highlights, request).Count == 0
+            ? second
+            : second with { Disclaimer = $"{UnverifiedWarning} {Disclaimer}" };
+    }
+
+    private async Task<CoachResponse> GenerateAsync(CoachRequest request, string? correction, CancellationToken ct)
     {
         var contents = new JsonArray();
         foreach (var turn in request.History ?? [])
@@ -53,7 +75,10 @@ public sealed class GeminiCoachService(HttpClient http, GeminiOptions options, I
         contents.Add(new JsonObject
         {
             ["role"] = "user",
-            ["parts"] = new JsonArray(new JsonObject { ["text"] = $"FACTS:\n{factsJson}\n\nQUESTION:\n{request.Question}" }),
+            ["parts"] = new JsonArray(new JsonObject
+            {
+                ["text"] = $"FACTS:\n{factsJson}\n\nQUESTION:\n{request.Question}" + (correction is null ? "" : $"\n\nCORRECTION:\n{correction}"),
+            }),
         });
 
         var body = new JsonObject
