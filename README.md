@@ -39,7 +39,10 @@ backend/RandWise.Gateway/           ASP.NET Core minimal API → Google Gemini
 | Eq. 2 Velocity projection (linear + 7-day weighted) | `VelocityEngine` |
 | §5 Hybrid AI (facts on-device, Gemini only explains) | `ai/ContextBuilder.kt`, `backend/` |
 | §7 POPIA & security | SQLCipher, app PIN/password + biometrics, consent log, privacy notice, CSV/PDF export, full erasure, backups disabled — see below |
-| Pay & bills | Monthly, fortnightly or weekly pay; weekly, monthly or yearly bills (`domain/PayCycle.kt`) |
+| Pay & bills | Monthly, fortnightly or weekly pay; weekly, monthly or yearly bills (`domain/PayCycle.kt`); paydays roll back past weekends and SA public holidays (`domain/SaPublicHolidays.kt`) |
+| Debt minimums | Fixed instalments or % of balance with a floor, as SA cards and store accounts work (`Debt.minimumFor`) |
+| Learning categories | Recategorising offers to fix the same merchant elsewhere and remember it for imports (`domain/CategoryLearning.kt`) |
+| Alerts | Bills due in 2 days, 80% / over-budget alerts once per cycle (`domain/engine/BudgetAlerts.kt`, `work/BillReminderWorker.kt`) |
 
 All money is `Long` cents. Percentages and APRs are basis points. No floating point touches a financial total.
 
@@ -59,6 +62,13 @@ Build flags: `-PrwPreview` installs a side-by-side `com.randwise.app.preview` wi
 `-PrwAbi=x86_64` packages a single CPU architecture (53 MB instead of 97 MB) for space-constrained emulators.
 
 Or open the folder in Android Studio and run the `app` configuration.
+
+**Quality gates:** `./gradlew :app:lintDebug` must report zero errors (policy in `app/lint.xml`); CI runs unit tests,
+lint, the debug build, and the gateway build + tests.
+
+**Size:** OCR comes from Google Play services (unbundled ML Kit), and release builds shrink code and resources —
+the release APK is ~31 MB (down from 75 MB) and Play delivers ~16 MB to an arm64 phone from the App Bundle
+(`./gradlew bundleRelease`). Devices without Google Play services can't read scanned PDFs; CSV and text PDFs still work.
 
 **Database migrations:** the schema is versioned with exported JSON in `app/schemas`. Every entity change needs
 a new version, a migration (auto or manual) and a case in `MigrationTest` — never destructive fallback.
@@ -94,6 +104,11 @@ behind **HTTPS** and enter its URL. Cleartext is only permitted to `10.0.2.2`/`l
 
 The gateway re-sanitises every payload, enforces a fixed system prompt and a JSON response schema,
 rate-limits per IP and never logs request bodies.
+
+**Answer grounding:** every rand amount in Gemini's answer must match a figure in the facts (or the user's question)
+to the nearest rand (`AnswerGrounding.cs`). An invented amount triggers one corrective retry; if the model still can't
+stay grounded the answer is returned with a visible "couldn't be verified" warning. Tests: `dotnet test backend/RandWise.Gateway.Tests`.
+Coach conversations are saved in the encrypted database (latest 200 turns) and can be cleared from the Coach tab.
 
 **Client key:** set `RANDWISE_CLIENT_KEY` on the gateway and the same value as `randwise.gatewayClientKey=…` in your
 git-ignored `local.properties`; calls without it get `401`. The key ships inside the APK, so treat it as a speed bump —
