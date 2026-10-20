@@ -30,7 +30,8 @@ object CsvStatementParser {
     private enum class Col { DATE, DESC, AMOUNT, DEBIT, CREDIT, BALANCE }
 
     private fun rowsOf(text: String): List<List<String>> {
-        val rawLines = text.replace("﻿", "").lines().filter { it.isNotBlank() }
+        // Strip a UTF-8 byte-order mark (Excel adds one to CSV exports).
+        val rawLines = text.replace(Char(0xFEFF).toString(), "").lines().filter { it.isNotBlank() }
         if (rawLines.isEmpty()) return emptyList()
         val delimiter = detectDelimiter(rawLines.take(30))
         return rawLines.map { splitRow(it, delimiter) }

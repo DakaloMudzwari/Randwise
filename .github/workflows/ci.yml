@@ -23,6 +23,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Unit tests (JUnit 5 maths engines & parsers)
         run: ./gradlew :app:testDebugUnitTest --stacktrace
+      - name: Android Lint (fails on errors; config in app/lint.xml)
+        run: ./gradlew :app:lintDebug
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug
       - name: Upload test report
@@ -30,7 +32,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: unit-test-report
-          path: app/build/reports/tests/testDebugUnitTest
+          path: |
+            app/build/reports/tests/testDebugUnitTest
+            app/build/reports/lint-results-debug.html
 
   gateway:
     name: Gateway — .NET build & tests

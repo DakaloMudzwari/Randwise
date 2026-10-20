@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -236,13 +237,13 @@ private fun ReviewRow(row: ImportRow, categories: List<Category>, importVm: Impo
 private fun ColumnMapper(s: ImportState.NeedsMapping, importVm: ImportViewModel) {
     val p = s.preview
     val sug = p.suggested
-    var headerRow by remember(s) { mutableStateOf(sug?.headerRow ?: -1) }
-    var date by remember(s) { mutableStateOf(sug?.date ?: 0) }
-    var desc by remember(s) { mutableStateOf(sug?.description ?: 1.coerceAtMost(p.columnCount - 1)) }
+    var headerRow by remember(s) { mutableIntStateOf(sug?.headerRow ?: -1) }
+    var date by remember(s) { mutableIntStateOf(sug?.date ?: 0) }
+    var desc by remember(s) { mutableIntStateOf(sug?.description ?: 1.coerceAtMost(p.columnCount - 1)) }
     var split by remember(s) { mutableStateOf(sug != null && sug.amount == null) }
-    var amount by remember(s) { mutableStateOf(sug?.amount ?: 2.coerceAtMost(p.columnCount - 1)) }
-    var debit by remember(s) { mutableStateOf(sug?.debit ?: 2.coerceAtMost(p.columnCount - 1)) }
-    var credit by remember(s) { mutableStateOf(sug?.credit ?: 3.coerceAtMost(p.columnCount - 1)) }
+    var amount by remember(s) { mutableIntStateOf(sug?.amount ?: 2.coerceAtMost(p.columnCount - 1)) }
+    var debit by remember(s) { mutableIntStateOf(sug?.debit ?: 2.coerceAtMost(p.columnCount - 1)) }
+    var credit by remember(s) { mutableIntStateOf(sug?.credit ?: 3.coerceAtMost(p.columnCount - 1)) }
     var balance by remember(s) { mutableStateOf(sug?.balance) }
 
     val header = p.rows.getOrNull(headerRow)

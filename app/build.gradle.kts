@@ -62,6 +62,11 @@ android {
         unitTests.all { it.useJUnitPlatform() }
         unitTests.isReturnDefaultValues = true
     }
+    lint {
+        lintConfig = file("lint.xml")
+        abortOnError = true
+        warningsAsErrors = false
+    }
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES")
     }

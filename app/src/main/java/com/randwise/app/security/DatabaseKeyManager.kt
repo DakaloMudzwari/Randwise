@@ -47,7 +47,7 @@ class DatabaseKeyManager(private val context: Context) {
             .putString(KEY_WRAPPED, Base64.encodeToString(wrapped, Base64.NO_WRAP))
             .putString(KEY_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .putBoolean(KEY_RAW, true)
-            .commit()
+            .commit() // Synchronous on purpose: the key must be on disk before the database is created.
         return passphrase
     }
 

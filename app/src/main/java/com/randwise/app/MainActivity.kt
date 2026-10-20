@@ -13,6 +13,7 @@ import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -76,8 +77,9 @@ class MainActivity : FragmentActivity() {
         setContent {
             RandWiseTheme {
                 if (locked) {
+                    val kind by container.passcode.kind.collectAsStateWithLifecycle()
                     LockScreen(
-                        kind = container.passcode.kind.value,
+                        kind = kind,
                         biometricAvailable = biometricShortcutAvailable(),
                         error = lockError,
                         lockedUntil = lockedUntil,

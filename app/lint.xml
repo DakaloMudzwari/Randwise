@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Android Lint policy. Every exception here is deliberate and explained. -->
+<lint>
+    <!-- The database key and app-password hash must be on disk before we continue (commit, not apply). -->
+    <issue id="ApplySharedPref">
+        <ignore path="src/main/java/com/randwise/app/security/*" />
+    </issue>
+    <!-- Empty trust managers live inside Bouncy Castle (pulled in by PDFBox); RandWise never uses them for networking. -->
+    <issue id="TrustAllX509TrustManager">
+        <ignore regexp="bcpkix" />
+    </issue>
+    <!-- Triggered by the dev-only -PrwAbi single-architecture flag; release builds ship every ABI. -->
+    <issue id="ChromeOsAbiSupport" severity="ignore" />
+    <!-- Library upgrades are planned as a separate, focused change; keep them visible but non-blocking. -->
+    <issue id="GradleDependency" severity="informational" />
+    <issue id="AndroidGradlePluginVersion" severity="informational" />
+</lint>

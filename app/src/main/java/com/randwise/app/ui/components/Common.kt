@@ -67,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.randwise.app.core.Money
@@ -427,7 +428,8 @@ fun SegmentedControl(options: List<String>, selected: Int, onSelect: (Int) -> Un
     ) {
         val segment = maxWidth / options.size
         val x by animateDpAsState(segment * selected, spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow), label = "seg")
-        Box(Modifier.offset(x = x).width(segment).fillMaxHeight().clip(CircleShape).background(RWBrush.emerald))
+        // Lambda offset: the sliding thumb moves in the layout phase without recomposing each frame.
+        Box(Modifier.offset { IntOffset(x.roundToPx(), 0) }.width(segment).fillMaxHeight().clip(CircleShape).background(RWBrush.emerald))
         Row(Modifier.fillMaxSize()) {
             options.forEachIndexed { i, label ->
                 val color by animateColorAsState(if (i == selected) Palette.Ink else Palette.TextDim, label = "segc")
