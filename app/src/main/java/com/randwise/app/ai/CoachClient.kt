@@ -1,5 +1,6 @@
 package com.randwise.app.ai
 
+import com.randwise.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -19,6 +20,7 @@ class CoachClient {
             doOutput = true
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Accept", "application/json")
+            if (BuildConfig.GATEWAY_CLIENT_KEY.isNotEmpty()) setRequestProperty("X-RandWise-Client-Key", BuildConfig.GATEWAY_CLIENT_KEY)
         }
         try {
             conn.outputStream.use { it.write(json.encodeToString(CoachRequest.serializer(), request).toByteArray()) }

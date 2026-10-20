@@ -18,10 +18,30 @@ builder.Services.AddRateLimiter(o =>
 });
 builder.Services.Configure<Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions>(o => o.Limits.MaxRequestBodySize = 64 * 1024);
 
+// Shared client key: blocks casual abuse of your Gemini quota. It ships inside the APK, so treat it as
+// a speed bump, not a secret — add Play Integrity / Firebase App Check attestation before scaling.
+var clientKey = Environment.GetEnvironmentVariable("RANDWISE_CLIENT_KEY") ?? builder.Configuration["Gateway:ClientKey"] ?? "";
+
 var app = builder.Build();
 app.UseRateLimiter();
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", geminiConfigured = gemini.ApiKey.Length > 0, model = gemini.Model }));
+app.Use(async (ctx, next) =>
+{
+    if (clientKey.Length > 0 && ctx.Request.Path.StartsWithSegments("/api"))
+    {
+        var supplied = ctx.Request.Headers["X-RandWise-Client-Key"].ToString();
+        var ok = System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.UTF8.GetBytes(supplied), System.Text.Encoding.UTF8.GetBytes(clientKey));
+        if (!ok)
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+    }
+    await next();
+});
+
+app.MapGet("/health", () => Results.Ok(new { status = "ok", geminiConfigured = gemini.ApiKey.Length > 0, clientKeyRequired = clientKey.Length > 0, model = gemini.Model }));
 
 app.MapPost("/api/coach", async (CoachRequest request, GeminiCoachService coach, CancellationToken ct) =>
 {

@@ -22,6 +22,13 @@ android {
         buildConfigField("String", "ADMOB_BANNER_ID", "\"ca-app-pub-3940256099942544/9214589741\"")
         // Default AI gateway (Android emulator -> host machine). Editable in Settings.
         buildConfigField("String", "DEFAULT_GATEWAY_URL", "\"http://10.0.2.2:5080\"")
+        // Gateway client key from the git-ignored local.properties (randwise.gatewayClientKey=...) or a
+        // -P property in CI. Empty means the gateway is running without a key (local development).
+        val localProps = java.util.Properties().apply {
+            rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+        }
+        val clientKey = (project.findProperty("randwise.gatewayClientKey") as String?) ?: localProps.getProperty("randwise.gatewayClientKey", "")
+        buildConfigField("String", "GATEWAY_CLIENT_KEY", "\"$clientKey\"")
     }
 
     buildTypes {
