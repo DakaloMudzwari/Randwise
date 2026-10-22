@@ -15,6 +15,14 @@ object Ledger {
     fun balance(account: Account, transactions: List<Transaction>): Long =
         account.openingBalanceMinor + transactions.filter { it.accountId == account.id }.sumOf { it.signedAmountMinor }
 
+    /**
+     * Statement reconciliation: the opening balance that makes [account]'s balance at the end of [endDay] equal the
+     * bank's [closingBalance]. Without it, importing history on top of a "current balance" typed at setup counts
+     * the same money twice. Transactions after [endDay] (newer manual entries) keep counting on top.
+     */
+    fun openingToMatch(account: Account, transactions: List<Transaction>, closingBalance: Long, endDay: Long): Long =
+        closingBalance - transactions.filter { it.accountId == account.id && it.date <= endDay }.sumOf { it.signedAmountMinor }
+
     /** Cash the user can actually spend: non-card accounts flagged for safe-to-spend. */
     fun liquidBalance(accounts: List<Account>, transactions: List<Transaction>): Long =
         accounts.filter { !it.archived && it.includeInSafeToSpend && it.type != AccountType.CREDIT_CARD }

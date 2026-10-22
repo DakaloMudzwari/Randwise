@@ -89,6 +89,17 @@ class MigrationTest {
         db.query("SELECT openingBalanceMinor FROM accounts WHERE id = 1").use { c -> assertTrue(c.moveToFirst()); assertEquals(500_000L, c.getLong(0)) }
     }
 
+    @Test
+    fun migrate3To4_keepsChatAndAddsCheckupTable() {
+        helper.createDatabase(DB, 3).apply {
+            execSQL("INSERT INTO chat_messages (id, source, text, highlights, note, timestamp) VALUES (1, 'USER', 'hi', '', NULL, 1)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate(DB, 4, true)
+        db.query("SELECT text FROM chat_messages WHERE id = 1").use { c -> assertTrue(c.moveToFirst()); assertEquals("hi", c.getString(0)) }
+        db.query("SELECT COUNT(*) FROM checkups").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }
+    }
+
     private companion object {
         const val DB = "migration-test"
     }

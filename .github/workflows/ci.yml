@@ -27,6 +27,8 @@ jobs:
         run: ./gradlew :app:lintDebug
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug
+      - name: Assemble release APK (unsigned; catches R8 shrinking failures)
+        run: ./gradlew :app:assembleRelease
       - name: Upload test report
         if: failure()
         uses: actions/upload-artifact@v4

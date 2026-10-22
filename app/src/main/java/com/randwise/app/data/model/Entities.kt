@@ -207,3 +207,11 @@ data class ConsentRecord(
     /** Epoch millis. */
     val timestamp: Long,
 )
+
+/** The latest money check-up, stored as JSON (ai.Checkup) in the encrypted database. One row. */
+@Entity(tableName = "checkups")
+data class CheckupEntity(
+    @PrimaryKey val id: Long = 1,
+    val json: String,
+    val createdAt: Long,
+)

@@ -43,6 +43,8 @@ backend/RandWise.Gateway/           ASP.NET Core minimal API → Google Gemini
 | Debt minimums | Fixed instalments or % of balance with a floor, as SA cards and store accounts work (`Debt.minimumFor`) |
 | Learning categories | Recategorising offers to fix the same merchant elsewhere and remember it for imports (`domain/CategoryLearning.kt`) |
 | Alerts | Bills due in 2 days, 80% / over-budget alerts once per cycle (`domain/engine/BudgetAlerts.kt`, `work/BillReminderWorker.kt`) |
+| Money check-up | Home → three months of spending by category and shop, trends, AI insights and suggestions, and a suggested budget you tick, edit and accept (`domain/engine/SpendingReview.kt`, `ai/LocalCheckup.kt`, `ui/screens/CheckupScreen.kt`, gateway `/api/checkup`) |
+| Own budget lines | Budget → + → *New category* with its own limit |
 
 All money is `Long` cents. Percentages and APRs are basis points. No floating point touches a financial total.
 
@@ -100,10 +102,22 @@ dotnet run                                          # listens on http://0.0.0.0:
 
 In the app: **Settings → Privacy → AI interpretation** (opt-in). The default URL `http://10.0.2.2:5080`
 reaches the host from the Android emulator. For a physical device or production, deploy the gateway
-behind **HTTPS** and enter its URL. Cleartext is only permitted to `10.0.2.2`/`localhost`.
+behind **HTTPS** — debug builds can enter its URL in Settings, release builds take it from `randwise.gatewayUrl`
+(see *Release build*). Cleartext is only permitted to `10.0.2.2`/`localhost`.
 
 The gateway re-sanitises every payload, enforces a fixed system prompt and a JSON response schema,
 rate-limits per IP and never logs request bodies.
+
+**Model:** `gemini-3.5-flash` by default (`Gemini:Model` in `appsettings.json`, or `Gemini__Model=…` as an environment
+variable). Google retires models for new keys over time — `gemini-2.5-flash` already returns 404 for new accounts — so
+check the [model list](https://ai.google.dev/gemini-api/docs/models) when a call starts failing. A "high demand" 503/429
+is retried once automatically.
+
+**Money check-up (`/api/checkup`):** the phone computes a three-month profile (median month per category, top shops
+by first word only, fees) and a baseline budget (`BudgetPlanner`: essentials at their typical month, wants 10% under,
+trimmed to fit income after savings). Gemini explains it and may tailor the limits; the app only accepts limits for
+known categories, within 50–120% of the typical month and within income. Off, or unreachable, the same check-up is
+built on the phone (`LocalCheckup`). The latest check-up is kept in the encrypted database.
 
 **Answer grounding:** every rand amount in Gemini's answer must match a figure in the facts (or the user's question)
 to the nearest rand (`AnswerGrounding.cs`). An invented amount triggers one corrective retry; if the model still can't
@@ -146,10 +160,31 @@ financial cards, onboarding, import or settings.
 The build uses Google's **test** AdMob IDs (`app/build.gradle.kts`). Before release, replace them with your own
 and configure your consent message in the AdMob console (the UMP flow is already wired in).
 
+## Release build
+
+`./gradlew bundleRelease` refuses to run until these are set in `local.properties` (git-ignored) or as `-P` flags:
+
+```properties
+randwise.signing.storeFile=../keys/randwise-upload.jks   # Play App Signing upload key; back it up
+randwise.signing.storePassword=…
+randwise.signing.keyAlias=upload
+randwise.signing.keyPassword=…
+randwise.admobAppId=ca-app-pub-…~…
+randwise.admobBannerId=ca-app-pub-…/…
+randwise.gatewayUrl=https://your-gateway.example.com     # release builds always use this; no URL field in Settings
+randwise.gatewayClientKey=…                              # same value as RANDWISE_CLIENT_KEY on the gateway
+```
+
+Debug builds always use AdMob test IDs and the emulator gateway (editable in Settings).
+
+Gateway in production: set `RANDWISE_TRUST_PROXY=true` behind Cloud Run / Container Apps / a reverse proxy so the
+per-IP limit sees real client addresses, and `RANDWISE_DAILY_REQUEST_CAP` (default 5000) to bound the Gemini bill.
+Use a **paid** Gemini API tier — free-tier prompts may be used by Google to improve its products.
+
 ## Before shipping
 
-- Replace AdMob test IDs and set up the UMP consent message in AdMob.
-- Deploy the gateway over HTTPS; add Play Integrity / App Check on top of the client key.
+- Set up the UMP consent message in AdMob.
+- Add Play Integrity / App Check on top of the client key.
 - Have the privacy notice reviewed (Information Officer registration, POPIA s72 cross-border wording, FAIS boundary).
 - Translations (Afrikaans, isiZulu…) — move UI strings to `strings.xml` and engage translators.
 - Crash reporting (Crashlytics or Sentry) with PII scrubbing — needs your project/DSN.

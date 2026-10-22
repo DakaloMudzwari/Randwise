@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.AutoMigration
 import androidx.room.Database
 import com.randwise.app.data.model.ChatMessageEntity
+import com.randwise.app.data.model.CheckupEntity
 import com.randwise.app.data.model.ConsentRecord
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -22,17 +23,20 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
     entities = [
         UserProfile::class, Account::class, Category::class, CategoryRule::class, Transaction::class,
         Budget::class, RecurringBill::class, Debt::class, Goal::class, ConsentRecord::class, ChatMessageEntity::class,
+        CheckupEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
     // v2: pay & bill frequencies, account-linked goals, POPIA consent log.
     // v3: percentage-of-balance debt minimums, saved coach chat.
+    // v4: saved money check-up.
     // Schemas live in app/schemas; every change needs a migration plus a MigrationTest case — never destructive fallback.
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)],
 )
 abstract class RandWiseDatabase : RoomDatabase() {
     abstract fun consentDao(): ConsentDao
     abstract fun chatDao(): ChatDao
+    abstract fun checkupDao(): CheckupDao
     abstract fun profileDao(): ProfileDao
     abstract fun accountDao(): AccountDao
     abstract fun categoryDao(): CategoryDao

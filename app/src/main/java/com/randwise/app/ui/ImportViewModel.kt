@@ -45,7 +45,7 @@ sealed interface ImportState {
         val duplicateCount get() = rows.count { it.isDuplicate }
         val possibleCount get() = rows.count { it.possibleDuplicate }
     }
-    data class Done(val inserted: Int, val skipped: Int) : ImportState
+    data class Done(val inserted: Int, val skipped: Int, val balanceCorrection: Long = 0, val matchedClosing: Long? = null) : ImportState
     data class Failed(val message: String) : ImportState
 }
 
@@ -74,6 +74,9 @@ class ImportViewModel(private val container: AppContainer) : ViewModel() {
                 _state.value = ImportState.Review(account, result.fileName, result.method, StatementValidator.validate(result.statement), result.statement.warnings, rows, result.rawCsv)
             } catch (e: PasswordRequiredException) {
                 _state.value = ImportState.NeedsPassword(uri, account, if (password != null) "Incorrect password" else null)
+            } catch (e: java.io.IOException) {
+                // PDF/CSV libraries report damaged or empty files with technical messages ("Unable to load the document!").
+                _state.value = ImportState.Failed("This file is empty or damaged. Download the statement from your bank again and retry.")
             } catch (e: Exception) {
                 _state.value = ImportState.Failed(e.message ?: "Could not read this file.")
             }
@@ -92,8 +95,10 @@ class ImportViewModel(private val container: AppContainer) : ViewModel() {
         val s = _state.value as? ImportState.Review ?: return
         _state.value = ImportState.Working("Saving…")
         viewModelScope.launch {
-            runCatching { container.repository.commitImport(s.account.id, s.rows, rememberRules) }
-                .onSuccess { _state.value = ImportState.Done(it, s.rows.size - it) }
+            // Only a statement whose balances add up is trusted to correct the account balance.
+            val closing = s.check.statedClosing.takeIf { s.check.balanced == true }
+            runCatching { container.repository.commitImport(s.account.id, s.rows, rememberRules, closing) }
+                .onSuccess { _state.value = ImportState.Done(it.inserted, s.rows.size - it.inserted, it.balanceCorrection, it.matchedClosing) }
                 .onFailure { _state.value = ImportState.Failed(it.message ?: "Import failed") }
         }
     }

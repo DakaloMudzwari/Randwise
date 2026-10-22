@@ -140,10 +140,8 @@ fun SettingsScreen(vm: FinanceViewModel) {
                     GhostButton("Edit", { editProfile = true })
                 }
                 Spacer(Modifier.height(16.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Pill(payLabel(profile), Palette.Mint)
-                    Pill(profile.currency, Palette.Sky)
-                }
+                // One pill: beside the long pay label a currency pill got squeezed to an empty stub. Rands are implied.
+                Pill(payLabel(profile), Palette.Mint)
                 Spacer(Modifier.height(14.dp))
                 Row {
                     MiniStat("Buffer", Money.formatWhole(profile.safetyBufferMinor), Modifier.weight(1f))
@@ -186,7 +184,7 @@ fun SettingsScreen(vm: FinanceViewModel) {
                 ToggleRow(Icons.Rounded.AutoAwesome, Palette.Violet, "AI interpretation", "Anonymised totals to Gemini · may be processed outside SA", settings.consentAiInterpretation) { v ->
                     if (v) aiConsentAsk = true else vm.setAiConsent(context, false)
                 }
-                if (settings.consentAiInterpretation) {
+                if (settings.consentAiInterpretation && BuildConfig.DEBUG) {
                     Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                         RWTextField(
                             gateway, { gateway = it.trim() }, "AI gateway URL", keyboardType = KeyboardType.Uri,
@@ -252,7 +250,8 @@ fun SettingsScreen(vm: FinanceViewModel) {
             text = {
                 Text(
                     "With AI interpretation on, RandWise sends anonymised totals (safe-to-spend, category totals, bill amounts) to Google's Gemini service, " +
-                        "which may process them outside South Africa. No names, account numbers, statement lines or notes are sent. " +
+                        "which may process them outside South Africa. The money check-up also sends three months of category totals and your " +
+                        "most-used shops (first word of the name only). No names, account numbers, statement lines or notes are sent. " +
                         "You can switch this off at any time; the on-device coach keeps working.",
                 )
             },

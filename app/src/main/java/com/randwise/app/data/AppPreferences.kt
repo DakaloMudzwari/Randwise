@@ -33,7 +33,8 @@ class AppPreferences(context: Context) {
         consentAiInterpretation = prefs.getBoolean("consent_ai", false),
         billReminders = prefs.getBoolean("reminders", true),
         budgetAlerts = prefs.getBoolean("budget_alerts", true),
-        gatewayUrl = prefs.getString("gateway", BuildConfig.DEFAULT_GATEWAY_URL) ?: BuildConfig.DEFAULT_GATEWAY_URL,
+        // Only debug builds may point at another gateway; release always uses its built-in HTTPS one.
+        gatewayUrl = if (BuildConfig.DEBUG) prefs.getString("gateway", null) ?: BuildConfig.DEFAULT_GATEWAY_URL else BuildConfig.DEFAULT_GATEWAY_URL,
         showAds = prefs.getBoolean("ads", true),
         hideFromScreenshots = prefs.getBoolean("secure_window", true),
     )

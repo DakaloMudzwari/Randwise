@@ -6,7 +6,7 @@ package com.randwise.app.data
  * Have it reviewed by your Information Officer / legal adviser before release.
  */
 object Privacy {
-    const val VERSION = "2026-10"
+    const val VERSION = "2026-10.2"
 
     object Consent {
         const val STATEMENTS = "STATEMENT_PROCESSING"
@@ -30,7 +30,8 @@ object Privacy {
             "AI coach and cross-border transfer",
             "If you switch on AI interpretation, RandWise sends anonymised totals — such as safe-to-spend, category totals and bill amounts — " +
                 "to the RandWise gateway, which forwards them to Google's Gemini service. Google may process this data on servers outside South Africa. " +
-                "No names, account numbers, statement lines or notes are sent. With AI interpretation off, the coach runs entirely on your phone.",
+                "The money check-up also sends three months of category totals and your most-used shops (first word of the name only, e.g. \"Woolworths\"). " +
+                "No names, account numbers, statement lines or notes are sent. With AI interpretation off, the coach and check-up run entirely on your phone.",
         ),
         Section(
             "Advertising",

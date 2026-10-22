@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Shield
@@ -99,12 +100,13 @@ import java.time.format.DateTimeFormatter
 private val D = DateTimeFormatter.ofPattern("d MMM")
 
 @Composable
-fun BudgetScreen(vm: FinanceViewModel) {
+fun BudgetScreen(vm: FinanceViewModel, onCheckup: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val a = state.analysis ?: return
     val s = state.snapshot
     var editBudget by remember { mutableStateOf<Category?>(null) }
     var pickCategory by remember { mutableStateOf(false) }
+    var newCategory by remember { mutableStateOf(false) }
     var editBill by remember { mutableStateOf<RecurringBill?>(null) }
     var editGoal by remember { mutableStateOf<Goal?>(null) }
     var editDebt by remember { mutableStateOf<Debt?>(null) }
@@ -145,6 +147,20 @@ fun BudgetScreen(vm: FinanceViewModel) {
                 Spacer(Modifier.height(14.dp))
                 StackedBar(a.budgetLines.sortedByDescending { it.spent }.map { BarSegment(it.category.name, it.spent + it.committed, categoryColor(it.category.colorArgb)) } +
                     BarSegment("Left", (limit - used).coerceAtLeast(0), Palette.GlassStrong))
+            }
+        }
+
+        // ---- Budget built from spending (money check-up)
+        item {
+            GlassCard(onClick = onCheckup, brush = Brush.linearGradient(listOf(Palette.Violet.copy(alpha = 0.2f), Palette.Navy900.copy(alpha = 0.6f)))) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBadge(Icons.Rounded.AutoAwesome, Palette.Violet)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(if (a.budgetLines.isEmpty()) "Build my budget from my spending" else "Rebuild from my spending", style = MaterialTheme.typography.titleSmall)
+                        Text("Looks at 3 months of transactions and suggests limits you can edit.", style = MaterialTheme.typography.bodySmall, color = Palette.TextDim)
+                    }
+                }
             }
         }
 
@@ -261,6 +277,12 @@ fun BudgetScreen(vm: FinanceViewModel) {
             title = { Text("Budget a category") },
             text = {
                 androidx.compose.foundation.lazy.LazyColumn {
+                    item {
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { pickCategory = false; newCategory = true }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Add, null, tint = Palette.Mint, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(10.dp))
+                            Text("New category", style = MaterialTheme.typography.bodyLarge, color = Palette.Mint)
+                        }
+                    }
                     items(available.size) { i ->
                         val c = available[i]
                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { pickCategory = false; editBudget = c }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -271,6 +293,12 @@ fun BudgetScreen(vm: FinanceViewModel) {
             },
             confirmButton = { TextButton({ pickCategory = false }) { Text("Close") } },
         )
+    }
+    if (newCategory) {
+        NewCategoryDialog(onDismiss = { newCategory = false }) { name, bucket, limit ->
+            newCategory = false
+            vm.addCategoryWithBudget(name, bucket, CustomCategoryColors[s.categories.size % CustomCategoryColors.size], limit)
+        }
     }
     editBudget?.let { cat ->
         val current = a.budgetLines.firstOrNull { it.category.id == cat.id }
@@ -289,6 +317,31 @@ fun BudgetScreen(vm: FinanceViewModel) {
     editBill?.let { bill -> BillDialog(bill, s.categories, onDismiss = { editBill = null }, onSave = { vm.saveBill(it); editBill = null }, onDelete = { vm.deleteBill(it); editBill = null }) }
     editGoal?.let { goal -> GoalDialog(goal, s.accounts.filter { !it.archived }, onDismiss = { editGoal = null }, onSave = { vm.saveGoal(it); editGoal = null }, onDelete = { vm.deleteGoal(it); editGoal = null }) }
     editDebt?.let { debt -> DebtDialog(debt, onDismiss = { editDebt = null }, onSave = { vm.saveDebt(it); editDebt = null }, onDelete = { vm.deleteDebt(it); editDebt = null }) }
+}
+
+/** Colours for categories people create themselves, cycled so neighbours differ. */
+private val CustomCategoryColors = listOf(0xFF34D399, 0xFF60A5FA, 0xFFFBBF24, 0xFFA78BFA, 0xFFF87171, 0xFF2DD4BF, 0xFFF472B6, 0xFFFB923C)
+
+/** Your own budget line: a category name, what kind of spending it is, and an optional limit. */
+@Composable
+private fun NewCategoryDialog(onDismiss: () -> Unit, onSave: (String, Bucket, Long) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var kind by remember { mutableStateOf(0) }
+    var amount by remember { mutableStateOf("") }
+    val buckets = listOf(Bucket.VARIABLE, Bucket.FIXED, Bucket.SAVINGS, Bucket.DEBT)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New budget category") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                RWTextField(name, { name = it.take(30) }, "Name, e.g. Braai & weekends")
+                SegmentedControl(listOf("Everyday", "Fixed", "Savings", "Debt"), kind, { kind = it })
+                MoneyField(amount, { amount = it }, "Limit this pay cycle (optional)")
+            }
+        },
+        confirmButton = { TextButton({ onSave(name.trim(), buckets[kind], Money.parse(amount) ?: 0) }, enabled = name.isNotBlank()) { Text("Add") } },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

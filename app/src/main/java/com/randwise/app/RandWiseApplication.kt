@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 /** Manual dependency container — small enough that a DI framework adds nothing. */
@@ -33,6 +34,12 @@ class AppContainer(private val context: Context) {
     val extractor by lazy { DocumentExtractor(context) }
     val coachClient by lazy { CoachClient() }
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Opens and keys the database. False means it can't be read — usually the Keystore key was lost
+     * (some devices drop it after an OS update or restore) — so the UI must not touch the repository.
+     */
+    suspend fun openDatabase(): Boolean = withContext(Dispatchers.IO) { runCatching { database.openHelper.writableDatabase }.isSuccess }
 }
 
 class RandWiseApplication : Application() {
@@ -45,7 +52,7 @@ class RandWiseApplication : Application() {
         createNotificationChannel()
         container.preferences.settings.value.let { scheduleReminders(it.billReminders || it.budgetAlerts) }
         // Open (and key) the encrypted database off the main thread while the first frame renders.
-        container.appScope.launch(Dispatchers.IO) { runCatching { container.database.openHelper.writableDatabase } }
+        container.appScope.launch { container.openDatabase() }
         // MobileAds is initialised by AdsConsent only once the UMP consent flow allows it.
     }
 

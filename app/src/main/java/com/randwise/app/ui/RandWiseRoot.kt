@@ -52,6 +52,7 @@ import com.randwise.app.ui.components.NavItem
 import com.randwise.app.ui.screens.AccountsScreen
 import com.randwise.app.ui.screens.AddTransactionSheet
 import com.randwise.app.ui.screens.BudgetScreen
+import com.randwise.app.ui.screens.CheckupScreen
 import com.randwise.app.ui.screens.HomeScreen
 import com.randwise.app.ui.screens.ImportScreen
 import com.randwise.app.ui.screens.InsightsScreen
@@ -83,6 +84,7 @@ fun RandWiseRoot(container: AppContainer) {
             initializer { FinanceViewModel(container) }
             initializer { ImportViewModel(container) }
             initializer { CoachViewModel(container) }
+            initializer { CheckupViewModel(container) }
         }
     }
     val vm: FinanceViewModel = viewModel(factory = factory)
@@ -102,6 +104,9 @@ fun RandWiseRoot(container: AppContainer) {
 private fun MainShell(vm: FinanceViewModel, factory: ViewModelProvider.Factory) {
     val nav = rememberNavController()
     val snackbar = remember { SnackbarHostState() }
+    // Activity-scoped so Home, the check-up screen and Budget share one check-up (and its "running" state).
+    val checkupVm: CheckupViewModel = viewModel(factory = factory)
+    val checkup by checkupVm.checkup.collectAsStateWithLifecycle()
     // null = sheet hidden; otherwise the mode it opens in (0 expense … 3 transfer).
     var addMode by rememberSaveable { mutableStateOf<Int?>(null) }
     val backStack by nav.currentBackStackEntryAsState()
@@ -137,12 +142,15 @@ private fun MainShell(vm: FinanceViewModel, factory: ViewModelProvider.Factory) 
         ) {
             composable("home") {
                 HomeScreen(
-                    vm, onAdd = { addMode = 0 }, onTransfer = { addMode = 3 }, onOpenLedger = { nav.navigate("ledger/0") },
-                    onImport = { go("accounts") }, onCoach = { go("insights") },
+                    vm, checkup, onAdd = { addMode = 0 }, onTransfer = { addMode = 3 }, onOpenLedger = { nav.navigate("ledger/0") },
+                    onImport = { go("accounts") }, onCoach = { go("insights") }, onCheckup = { nav.navigate("checkup") },
                 )
             }
+            composable("checkup") {
+                CheckupScreen(vm, checkupVm, onBack = { nav.popBackStack() }, onImport = { go("accounts") }, onBudgetApplied = { go("budget") })
+            }
             composable("insights") { InsightsScreen(vm, viewModel(factory = factory)) }
-            composable("budget") { BudgetScreen(vm) }
+            composable("budget") { BudgetScreen(vm, onCheckup = { nav.navigate("checkup") }) }
             composable("accounts") {
                 AccountsScreen(vm, onImport = { id -> nav.navigate("import/$id") }, onLedger = { id -> nav.navigate("ledger/$id") }, onAdd = { addMode = 0 })
             }

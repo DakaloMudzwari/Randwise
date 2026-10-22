@@ -42,4 +42,23 @@ public static partial class PayloadSanitizer
             .ToList();
         return new CoachRequest(Clean(r.Question, 800), facts, history);
     }
+
+    public static CheckupRequest Sanitize(CheckupRequest r)
+    {
+        var f = r.Facts;
+        return new CheckupRequest(f with
+        {
+            Currency = Clean(f.Currency, 3),
+            Today = Clean(f.Today, 10),
+            MonthlySpendMinor = (f.MonthlySpendMinor ?? []).Take(3).ToList(),
+            Categories = (f.Categories ?? []).Take(15)
+                .Select(c => c with { Category = Clean(c.Category, 40), MonthsMinor = (c.MonthsMinor ?? []).Take(3).ToList() })
+                .ToList(),
+            // Merchants are already reduced to the first word of the name on the phone.
+            Merchants = (f.Merchants ?? []).Take(8)
+                .Select(m => m with { Label = Clean(m.Label, 24), Category = m.Category is null ? null : Clean(m.Category, 40) })
+                .ToList(),
+            DetectedInsights = (f.DetectedInsights ?? []).Take(10).Select(i => Clean(i, 300)).ToList(),
+        });
+    }
 }

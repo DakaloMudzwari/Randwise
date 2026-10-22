@@ -80,11 +80,51 @@ public static partial class AnswerGrounding
     }
 
     /// <summary>Amounts in [answer] that don't match any allowed figure to within one rand.</summary>
-    public static List<long> Ungrounded(string answer, IEnumerable<string> highlights, CoachRequest request)
+    public static List<long> Ungrounded(string answer, IEnumerable<string> highlights, CoachRequest request) =>
+        Ungrounded(highlights.Prepend(answer), AllowedCents(request));
+
+    /// <summary>Amounts in [texts] that don't match any [allowed] figure to within one rand.</summary>
+    public static List<long> Ungrounded(IEnumerable<string> texts, IEnumerable<long> allowed)
     {
-        var allowed = AllowedCents(request).Select(Math.Abs).ToList();
-        var found = ExtractCents(answer);
-        foreach (var h in highlights) found.AddRange(ExtractCents(h));
-        return found.Where(a => !allowed.Any(x => Math.Abs(Math.Abs(a) - x) <= 100)).Distinct().ToList();
+        var ok = allowed.Select(Math.Abs).ToList();
+        return texts.SelectMany(ExtractCents).Where(a => !ok.Any(x => Math.Abs(Math.Abs(a) - x) <= 100)).Distinct().ToList();
     }
+
+    /// <summary>
+    /// Every money figure a check-up may quote: the facts, the model's own budget limits (the app checks those
+    /// separately) and the saving each limit implies against that category's typical month.
+    /// </summary>
+    public static HashSet<long> AllowedCents(CheckupFacts f, IEnumerable<CheckupBudgetProposal> budget)
+    {
+        var set = new HashSet<long>
+        {
+            f.MonthlyIncomeMinor, f.PlannedSavingsMinor, f.AvailableForBudgetMinor, f.TypicalSpendMinor,
+            f.UncategorisedTypicalMinor, f.FeeTotalMinor, f.MonthlyIncomeMinor - f.TypicalSpendMinor,
+        };
+        foreach (var m in f.MonthlySpendMinor) set.Add(m);
+        var typicalByName = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in f.Categories)
+        {
+            typicalByName[c.Category] = c.TypicalMinor;
+            set.Add(c.TypicalMinor);
+            foreach (var m in c.MonthsMinor) set.Add(m);
+            if (c.SuggestedLimitMinor is { } l) set.Add(l);
+            if (c.SuggestedSavingMinor is { } s) set.Add(s);
+        }
+        foreach (var m in f.Merchants) set.Add(m.TotalMinor);
+        foreach (var i in f.DetectedInsights) foreach (var a in ExtractCents(i)) set.Add(a);
+        foreach (var b in budget)
+        {
+            set.Add(b.LimitMinor);
+            if (typicalByName.TryGetValue(b.Category, out var typical)) set.Add(typical - b.LimitMinor);
+        }
+        return set;
+    }
+
+    /// <summary>All the prose in a check-up, for grounding.</summary>
+    public static IEnumerable<string> Texts(CheckupResponse r) =>
+        new[] { r.Headline, r.Summary }
+            .Concat(r.Insights.SelectMany(n => new[] { n.Title, n.Body }))
+            .Concat(r.Suggestions.SelectMany(n => new[] { n.Title, n.Body }))
+            .Concat(r.Budget.Select(b => b.Reason));
 }

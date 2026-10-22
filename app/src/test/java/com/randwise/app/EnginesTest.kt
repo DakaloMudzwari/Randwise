@@ -58,6 +58,17 @@ class LedgerTest {
     }
 
     @Test
+    fun `importing history on top of a typed current balance reconciles to the statement`() {
+        // Setup typed today's balance (R 3 000); then a statement with R 3 000 closing is imported.
+        val acc = Account(id = 9, name = "Everyday", type = AccountType.CHEQUE, openingBalanceMinor = 300_000)
+        val history = listOf(tx(9, TxType.INCOME, 500_000, d.minusDays(3)), tx(9, TxType.EXPENSE, 200_000, d))
+        assertEquals(600_000, Ledger.balance(acc, history)) // counted twice without reconciliation
+        val opening = Ledger.openingToMatch(acc, history, closingBalance = 300_000, endDay = d.toEpochDay())
+        val later = history + tx(9, TxType.EXPENSE, 5_000, d.plusDays(1)) // a manual entry after the statement still counts
+        assertEquals(295_000, Ledger.balance(acc.copy(openingBalanceMinor = opening), later))
+    }
+
+    @Test
     fun `balances follow every leg`() {
         assertEquals(1_950_000, Ledger.balance(cheque, txs))
         assertEquals(10_000, Ledger.balance(card, txs))
@@ -85,6 +96,19 @@ class SafeToSpendAndVelocityTest {
         assertEquals(50_000, r.unpaidBillsTotal)
         assertEquals(900_000, r.safeToSpend)
         assertEquals(225_000, r.perDay) // 4 days to payday
+    }
+
+    @Test
+    fun `a generically named bill is paid by a debit order of the same amount near its due date`() {
+        val cycle = PayCycle.forDate(LocalDate.of(2026, 10, 19), 25, true)
+        val insurance = RecurringBill(id = 3, name = "Insurance", merchantPattern = "INSURANCE", expectedAmountMinor = 312_000, dueDay = 1, isConfirmed = true)
+        val paid = listOf(tx(1, TxType.EXPENSE, 312_000, LocalDate.of(2026, 10, 2), "DEBIT ORDER DISCOVERY HEALTH"))
+        assertTrue(BillSchedule.occurrencesInCycle(listOf(insurance), cycle, paid).single().paid)
+        // Same amount but two weeks from the due date, or a different amount: not this bill.
+        val farOff = listOf(tx(1, TxType.EXPENSE, 312_000, LocalDate.of(2026, 10, 15), "TAKEALOT"))
+        val different = listOf(tx(1, TxType.EXPENSE, 250_000, LocalDate.of(2026, 10, 1), "DISCOVERY"))
+        assertFalse(BillSchedule.occurrencesInCycle(listOf(insurance), cycle, farOff).single().paid)
+        assertFalse(BillSchedule.occurrencesInCycle(listOf(insurance), cycle, different).single().paid)
     }
 
     @Test

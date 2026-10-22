@@ -1,6 +1,8 @@
 package com.randwise.app.security
 
 import android.content.Context
+import android.os.SystemClock
+import android.provider.Settings
 import android.util.Base64
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,7 +46,21 @@ object LockoutPolicy {
         val step = (failures - FREE_ATTEMPTS).coerceAtMost(10)
         return (BASE_MS shl step).coerceAtMost(MAX_MS)
     }
+
+    /**
+     * How much of a [lockMs] lockout started at [at] is left [now]. Within one boot the monotonic clock
+     * decides, so changing the phone's time can't skip the wait. After a reboot only the wall clock is
+     * left, and it is never allowed to run backwards.
+     */
+    fun remainingMillis(lockMs: Long, at: ClockStamp, now: ClockStamp): Long {
+        val sameBoot = at.boot >= 0 && at.boot == now.boot && now.elapsedMs >= at.elapsedMs
+        val passed = if (sameBoot) now.elapsedMs - at.elapsedMs else (now.wallMs - at.wallMs).coerceAtLeast(0)
+        return (lockMs - passed).coerceIn(0, lockMs.coerceAtLeast(0))
+    }
 }
+
+/** A moment on both clocks: wall time, time since boot, and which boot (-1 when unknown). */
+data class ClockStamp(val wallMs: Long, val elapsedMs: Long, val boot: Int)
 
 object PasscodeRules {
     /** Returns a user-facing problem with [secret], or null when it is acceptable. */
@@ -73,8 +89,15 @@ sealed interface VerifyResult {
  * The user's own app password. Stored as salt + PBKDF2 hash in private prefs; failed attempts and
  * lockout survive app restarts so the wait can't be skipped by force-closing.
  */
-class PasscodeManager(context: Context, private val now: () -> Long = System::currentTimeMillis) {
+class PasscodeManager(context: Context) {
     private val prefs = context.getSharedPreferences("rw_lock", Context.MODE_PRIVATE)
+    private val resolver = context.contentResolver
+
+    private fun stamp() = ClockStamp(
+        System.currentTimeMillis(),
+        SystemClock.elapsedRealtime(),
+        Settings.Global.getInt(resolver, Settings.Global.BOOT_COUNT, -1),
+    )
     private val _kind = MutableStateFlow(readKind())
     /** null when no app password is set. */
     val kind: StateFlow<PasscodeKind?> = _kind.asStateFlow()
@@ -92,26 +115,38 @@ class PasscodeManager(context: Context, private val now: () -> Long = System::cu
             .putString(HASH, Base64.encodeToString(hash, Base64.NO_WRAP))
             .putInt(ITER, PasscodeHasher.ITERATIONS)
             .putInt(FAILS, 0)
-            .putLong(UNTIL, 0)
+            .putLong(LOCK_MS, 0)
             .commit()
         _kind.value = kind
     }
 
-    fun lockoutRemainingMillis(): Long = (prefs.getLong(UNTIL, 0) - now()).coerceAtLeast(0)
+    fun lockoutRemainingMillis(): Long {
+        val lockMs = prefs.getLong(LOCK_MS, 0)
+        if (lockMs <= 0) return 0
+        val at = ClockStamp(prefs.getLong(LOCK_WALL, 0), prefs.getLong(LOCK_ELAPSED, 0), prefs.getInt(LOCK_BOOT, -1))
+        return LockoutPolicy.remainingMillis(lockMs, at, stamp())
+    }
 
     fun verify(secret: CharArray): VerifyResult {
-        val until = prefs.getLong(UNTIL, 0)
-        if (until > now()) return VerifyResult.LockedOut(until)
+        lockoutRemainingMillis().let { if (it > 0) return VerifyResult.LockedOut(System.currentTimeMillis() + it) }
         val salt = prefs.getString(SALT, null)?.let { Base64.decode(it, Base64.NO_WRAP) } ?: return VerifyResult.Success
         val hash = prefs.getString(HASH, null)?.let { Base64.decode(it, Base64.NO_WRAP) } ?: return VerifyResult.Success
         if (PasscodeHasher.matches(secret, salt, hash, prefs.getInt(ITER, PasscodeHasher.ITERATIONS))) {
-            prefs.edit().putInt(FAILS, 0).putLong(UNTIL, 0).apply()
+            prefs.edit().putInt(FAILS, 0).putLong(LOCK_MS, 0).commit()
             return VerifyResult.Success
         }
         val fails = prefs.getInt(FAILS, 0) + 1
         val wait = LockoutPolicy.lockoutMillis(fails)
-        prefs.edit().putInt(FAILS, fails).putLong(UNTIL, if (wait > 0) now() + wait else 0).apply()
-        return if (wait > 0) VerifyResult.LockedOut(now() + wait)
+        val now = stamp()
+        // commit, not apply: force-closing the app right after a wrong guess must not lose the count.
+        prefs.edit()
+            .putInt(FAILS, fails)
+            .putLong(LOCK_MS, wait)
+            .putLong(LOCK_WALL, now.wallMs)
+            .putLong(LOCK_ELAPSED, now.elapsedMs)
+            .putInt(LOCK_BOOT, now.boot)
+            .commit()
+        return if (wait > 0) VerifyResult.LockedOut(now.wallMs + wait)
         else VerifyResult.Wrong(LockoutPolicy.FREE_ATTEMPTS - fails)
     }
 
@@ -126,6 +161,9 @@ class PasscodeManager(context: Context, private val now: () -> Long = System::cu
         const val HASH = "hash"
         const val ITER = "iter"
         const val FAILS = "fails"
-        const val UNTIL = "locked_until"
+        const val LOCK_MS = "lock_ms"
+        const val LOCK_WALL = "lock_wall"
+        const val LOCK_ELAPSED = "lock_elapsed"
+        const val LOCK_BOOT = "lock_boot"
     }
 }

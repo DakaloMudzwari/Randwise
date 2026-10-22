@@ -100,6 +100,14 @@ fun ImportScreen(vm: FinanceViewModel, importVm: ImportViewModel, accountId: Lon
                 Spacer(Modifier.height(12.dp))
                 Text("${s.inserted} transactions imported", style = MaterialTheme.typography.titleLarge)
                 if (s.skipped > 0) Text("${s.skipped} skipped (duplicates or excluded)", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                s.matchedClosing?.let { closing ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Balance matched to your statement: ${Money.format(closing)}" +
+                            if (s.balanceCorrection != 0L) " (adjusted by ${Money.format(s.balanceCorrection, showSign = true)})" else "",
+                        color = RW.colors.positive, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                }
                 Spacer(Modifier.height(24.dp))
                 Button({ importVm.reset(); onDone() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) { Text("Done") }
                 TextButton({ importVm.reset(); picker.launch(mimeTypes) }) { Text("Import another") }
@@ -160,7 +168,8 @@ private fun ReviewList(s: ImportState.Review, categories: List<Category>, import
                             style = MaterialTheme.typography.bodySmall,
                         )
                         s.warnings.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = RW.colors.warning) }
-                        if (s.rawCsv != null) TextButton({ importVm.remap() }, contentPadding = PaddingValues(0.dp)) {
+                        // Small corner radius: the default pill shape clips the first and last letters when the text wraps.
+                        if (s.rawCsv != null) TextButton({ importVm.remap() }, shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(0.dp)) {
                             Text("Amounts or dates look wrong? Choose the columns yourself", color = RW.colors.positive)
                         }
                     }
@@ -177,10 +186,12 @@ private fun ReviewList(s: ImportState.Review, categories: List<Category>, import
                     Text("Remember my category choices", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     Switch(rememberRules, { rememberRules = it })
                 }
+                // Nothing new but the statement balances: re-importing it still corrects the account balance.
+                val reconcileOnly = s.newCount == 0 && s.check.balanced == true
                 Button(
-                    { importVm.commit(rememberRules) }, enabled = s.newCount > 0, modifier = Modifier.fillMaxWidth(),
+                    { importVm.commit(rememberRules) }, enabled = s.newCount > 0 || reconcileOnly, modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                ) { Text("Import ${s.newCount} transactions") }
+                ) { Text(if (reconcileOnly) "Match balance to statement" else "Import ${s.newCount} transactions") }
             }
         }
     }

@@ -12,6 +12,7 @@ import com.randwise.app.data.model.Budget
 import com.randwise.app.data.model.Category
 import com.randwise.app.data.model.CategoryRule
 import com.randwise.app.data.model.ChatMessageEntity
+import com.randwise.app.data.model.CheckupEntity
 import com.randwise.app.data.model.ConsentRecord
 import com.randwise.app.data.model.Debt
 import com.randwise.app.data.model.Goal
@@ -185,4 +186,13 @@ interface PlanDao {
 
     @Delete
     suspend fun deleteGoal(goal: Goal)
+}
+
+@Dao
+interface CheckupDao {
+    @Query("SELECT * FROM checkups WHERE id = 1")
+    fun observe(): Flow<CheckupEntity?>
+
+    @Upsert
+    suspend fun save(checkup: CheckupEntity)
 }

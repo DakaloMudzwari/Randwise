@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -48,6 +49,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.randwise.app.ai.Checkup
 import com.randwise.app.core.Money
 import com.randwise.app.data.model.Category
 import com.randwise.app.data.model.Transaction
@@ -60,6 +62,7 @@ import com.randwise.app.ui.Gutter
 import com.randwise.app.ui.NavClearance
 import com.randwise.app.ui.gutter
 import com.randwise.app.ui.components.AdBanner
+import com.randwise.app.ui.components.CoachOrb
 import com.randwise.app.ui.components.AnimatedMoney
 import com.randwise.app.ui.components.BarSegment
 import com.randwise.app.ui.components.ColorDot
@@ -91,7 +94,16 @@ import java.time.temporal.ChronoUnit
 private val DAY_FMT = DateTimeFormatter.ofPattern("d MMM")
 
 @Composable
-fun HomeScreen(vm: FinanceViewModel, onAdd: () -> Unit, onTransfer: () -> Unit, onOpenLedger: () -> Unit, onImport: () -> Unit, onCoach: () -> Unit) {
+fun HomeScreen(
+    vm: FinanceViewModel,
+    checkup: Checkup?,
+    onAdd: () -> Unit,
+    onTransfer: () -> Unit,
+    onOpenLedger: () -> Unit,
+    onImport: () -> Unit,
+    onCoach: () -> Unit,
+    onCheckup: () -> Unit,
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
     val a = state.analysis ?: return
@@ -105,6 +117,10 @@ fun HomeScreen(vm: FinanceViewModel, onAdd: () -> Unit, onTransfer: () -> Unit, 
     ) {
         item { Box(Modifier.gutter()) { TopBar(a.today, dueSoon) { showAlerts = true } } }
         item { Hero(a, Modifier.gutter().enterAnimation(0)) }
+        item {
+            val newData = checkup != null && (state.snapshot.transactions.maxOfOrNull { it.id } ?: 0L) > checkup.lastTransactionId
+            CheckupCard(checkup, newData, onCheckup, Modifier.gutter().enterAnimation(1))
+        }
         item { Composition(a, Modifier.gutter().enterAnimation(1)) }
         item { QuickActions(onAdd, onTransfer, onImport, onCoach, Modifier.gutter().enterAnimation(2)) }
         item { Runway(a, Modifier.gutter().enterAnimation(3)) }
@@ -215,7 +231,7 @@ private fun TopBar(today: LocalDate, dueSoon: Int, onAlerts: () -> Unit) {
                 Modifier.size(48.dp).clip(CircleShape).background(Palette.Glass).border(1.dp, Palette.Hairline, CircleShape).pressable(onAlerts),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Rounded.NotificationsNone, if (dueSoon > 0) "Alerts, $dueSoon bills due soon" else "Alerts", tint = Palette.Text)
+                Icon(Icons.Rounded.NotificationsNone, if (dueSoon > 0) "Alerts, $dueSoon bill${if (dueSoon == 1) "" else "s"} due soon" else "Alerts", tint = Palette.Text)
             }
             if (dueSoon > 0) Box(
                 Modifier.align(Alignment.TopEnd).offset(2.dp, (-2).dp).size(18.dp).clip(CircleShape).background(Palette.Amber),
@@ -245,7 +261,7 @@ private fun Hero(a: Analysis, modifier: Modifier) {
                 Pill("${Money.formatWhole(sts.perDay)} a day", accent, icon = Icons.Rounded.TrendingUp)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "${sts.daysUntilPayday} days until payday · ${a.cycle.nextPayday.format(DAY_FMT)}",
+                    "${sts.daysUntilPayday} day${if (sts.daysUntilPayday == 1L) "" else "s"} until payday · ${a.cycle.nextPayday.format(DAY_FMT)}",
                     style = MaterialTheme.typography.bodySmall, color = Palette.TextDim, textAlign = TextAlign.Center,
                 )
             }
@@ -285,6 +301,30 @@ private fun Composition(a: Analysis, modifier: Modifier) {
                     MoneyText(seg.amount, style = MaterialTheme.typography.titleSmall, whole = true)
                 }
             }
+        }
+    }
+}
+
+/** Entry to the money check-up: an invitation until the first one runs, then its headline. */
+@Composable
+private fun CheckupCard(checkup: Checkup?, newData: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    GlassCard(modifier, onClick = onClick, brush = Brush.linearGradient(listOf(Palette.Violet.copy(alpha = 0.22f), Palette.Navy900.copy(alpha = 0.6f)))) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            CoachOrb(Modifier.size(46.dp))
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Eyebrow(if (checkup?.source == "GEMINI") "AI money check-up" else "Money check-up", Palette.Violet)
+                Text(checkup?.headline ?: "Where is your money going?", style = MaterialTheme.typography.titleMedium, maxLines = 2)
+                Text(
+                    when {
+                        checkup == null -> "Analyse 3 months of spending and get a budget built for you."
+                        newData -> "New transactions — tap to refresh your check-up."
+                        else -> checkup.insights.firstOrNull()?.title ?: "Tap to see your spending, suggestions and budget."
+                    },
+                    style = MaterialTheme.typography.bodySmall, color = if (newData) Palette.Amber else Palette.TextDim, maxLines = 2,
+                )
+            }
+            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = Palette.TextDim)
         }
     }
 }

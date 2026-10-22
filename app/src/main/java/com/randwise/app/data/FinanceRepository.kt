@@ -6,6 +6,7 @@ import com.randwise.app.data.db.RandWiseDatabase
 import com.randwise.app.data.model.Account
 import com.randwise.app.data.model.AccountType
 import com.randwise.app.data.model.Budget
+import com.randwise.app.data.model.CheckupEntity
 import com.randwise.app.data.model.Category
 import com.randwise.app.data.model.CategoryRule
 import com.randwise.app.data.model.ChatMessageEntity
@@ -19,6 +20,7 @@ import com.randwise.app.data.model.TxType
 import com.randwise.app.data.model.UserProfile
 import com.randwise.app.domain.CategoryLearning
 import com.randwise.app.domain.FinanceSnapshot
+import com.randwise.app.domain.Ledger
 import com.randwise.app.domain.MerchantText
 import com.randwise.app.domain.PayCycle
 import com.randwise.app.domain.PaySchedule
@@ -31,6 +33,9 @@ import kotlinx.coroutines.flow.combine
 import java.io.OutputStream
 import java.time.LocalDate
 import java.util.UUID
+
+/** Rows saved, how far the account was moved to match the statement, and the balance it now matches (if checked). */
+data class ImportResult(val inserted: Int, val balanceCorrection: Long, val matchedClosing: Long?)
 
 /** A statement row staged for review before it is committed (F03 duplicate review). */
 data class ImportRow(
@@ -67,6 +72,13 @@ class FinanceRepository(private val db: RandWiseDatabase) {
     val consentHistory: Flow<List<ConsentRecord>> = consents.observeAll()
 
     private val chat = db.chatDao()
+    private val checkups = db.checkupDao()
+
+    // ---------- Money check-up (latest only, encrypted) ----------
+
+    val checkup: Flow<CheckupEntity?> = checkups.observe()
+
+    suspend fun saveCheckup(json: String, createdAt: Long) = checkups.save(CheckupEntity(json = json, createdAt = createdAt))
 
     // ---------- Coach chat history (encrypted, bounded, erased with everything else) ----------
 
@@ -253,7 +265,12 @@ class FinanceRepository(private val db: RandWiseDatabase) {
     }
 
     /** Commits staged rows; returns the number of new rows actually written. */
-    suspend fun commitImport(accountId: Long, rows: List<ImportRow>, rememberRules: Boolean): Int = db.withTransaction {
+    /**
+     * Saves the chosen rows. When [verifiedClosing] is given (the statement's balances added up), the account is
+     * reconciled so its balance on the statement's last day equals the bank's — see [Ledger.openingToMatch].
+     * Credit cards are left alone: banks state their balance as the amount owed, with the opposite sign.
+     */
+    suspend fun commitImport(accountId: Long, rows: List<ImportRow>, rememberRules: Boolean, verifiedClosing: Long? = null): ImportResult = db.withTransaction {
         val chosen = rows.filter { it.include && !it.isDuplicate }
         val ids = txs.insertAll(
             chosen.map {
@@ -275,7 +292,15 @@ class FinanceRepository(private val db: RandWiseDatabase) {
                 }
             }
         }
-        ids.count { it != -1L }
+        var correction = 0L
+        val account = accounts.getAll().firstOrNull { it.id == accountId }
+        val endDay = rows.maxOfOrNull { it.date.toEpochDay() }
+        if (verifiedClosing != null && account != null && endDay != null && account.type != AccountType.CREDIT_CARD) {
+            val opening = Ledger.openingToMatch(account, txs.getAll(), verifiedClosing, endDay)
+            correction = opening - account.openingBalanceMinor
+            if (correction != 0L) accounts.update(account.copy(openingBalanceMinor = opening))
+        }
+        ImportResult(ids.count { it != -1L }, correction, verifiedClosing.takeIf { account?.type != AccountType.CREDIT_CARD })
     }
 
     // ---------- Budgets (F04) ----------

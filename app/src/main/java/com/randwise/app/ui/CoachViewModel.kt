@@ -64,7 +64,7 @@ class CoachViewModel(private val container: AppContainer) : ViewModel() {
                     onSuccess = { ChatMessage(CoachSource.GEMINI, it.answer, it.highlights, it.disclaimer.ifBlank { LocalCoach.DISCLAIMER }) },
                     onFailure = {
                         val local = LocalCoach.answer(q, analysis)
-                        ChatMessage(CoachSource.LOCAL, local.answer, note = "AI gateway unreachable — answered on-device. ${local.disclaimer}")
+                        ChatMessage(CoachSource.LOCAL, local.answer, note = "AI is busy or unreachable right now — answered on your phone. ${local.disclaimer}")
                     },
                 )
             } else {

@@ -1,5 +1,6 @@
 package com.randwise.app
 
+import com.randwise.app.security.ClockStamp
 import com.randwise.app.security.LockoutPolicy
 import com.randwise.app.security.PasscodeHasher
 import com.randwise.app.security.PasscodeKind
@@ -35,6 +36,20 @@ class PasscodeTest {
         assertEquals(60_000, LockoutPolicy.lockoutMillis(6))
         assertEquals(120_000, LockoutPolicy.lockoutMillis(7))
         assertEquals(15 * 60_000L, LockoutPolicy.lockoutMillis(30))
+    }
+
+    @Test
+    fun `changing the clock cannot skip a lockout`() {
+        val at = ClockStamp(wallMs = 1_000_000, elapsedMs = 50_000, boot = 7)
+        // Same boot: only real elapsed time counts, wherever the wall clock is moved.
+        assertEquals(20_000, LockoutPolicy.remainingMillis(30_000, at, ClockStamp(9_999_999_999, 60_000, 7)))
+        assertEquals(0, LockoutPolicy.remainingMillis(30_000, at, ClockStamp(0, 90_000, 7)))
+        // After a reboot the wall clock decides, but winding it back never adds time or ends the wait.
+        assertEquals(30_000, LockoutPolicy.remainingMillis(30_000, at, ClockStamp(500_000, 1_000, 8)))
+        assertEquals(10_000, LockoutPolicy.remainingMillis(30_000, at, ClockStamp(1_020_000, 1_000, 8)))
+        // Unknown boot count falls back to the wall clock.
+        val unknown = at.copy(boot = -1)
+        assertEquals(30_000, LockoutPolicy.remainingMillis(30_000, unknown, ClockStamp(1_000_000, 1_000, -1)))
     }
 
     @Test

@@ -114,6 +114,15 @@ class FinanceViewModel(private val container: AppContainer) : ViewModel() {
 
     fun addCategory(name: String, bucket: Bucket, color: Long) = launchSafe("Category added") { repo.addCategory(name, bucket, color) }
 
+    /** A user-made budget line: the category, plus this cycle's limit when one was given. */
+    fun addCategoryWithBudget(name: String, bucket: Bucket, color: Long, limit: Long) {
+        val cycle = state.value.analysis?.cycle ?: return
+        launchSafe("$name added to your budget") {
+            val id = repo.addCategory(name, bucket, color)
+            if (limit > 0) repo.setBudget(id, cycle, limit)
+        }
+    }
+
     fun setBudget(categoryId: Long, limit: Long) {
         val cycle = state.value.analysis?.cycle ?: return
         launchSafe { repo.setBudget(categoryId, cycle, limit) }

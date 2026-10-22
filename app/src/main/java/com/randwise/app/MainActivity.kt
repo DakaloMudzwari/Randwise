@@ -26,6 +26,8 @@ import androidx.lifecycle.lifecycleScope
 import com.randwise.app.ads.AdsConsent
 import com.randwise.app.security.VerifyResult
 import com.randwise.app.ui.RandWiseRoot
+import com.randwise.app.ui.components.AuroraBackground
+import com.randwise.app.ui.screens.DataUnavailableScreen
 import com.randwise.app.ui.screens.LockScreen
 import com.randwise.app.ui.theme.RandWiseTheme
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +47,8 @@ class MainActivity : FragmentActivity() {
     private var lockError by mutableStateOf<String?>(null)
     private var lockedUntil by mutableLongStateOf(0L)
     private var checking by mutableStateOf(false)
+    /** null while the encrypted database is opening; false when it can't be read. */
+    private var databaseOk by mutableStateOf<Boolean?>(null)
     private var backgroundedAt = 0L
 
     private val container get() = (application as RandWiseApplication).container
@@ -73,9 +77,11 @@ class MainActivity : FragmentActivity() {
         locked = lockRequired()
         lockedUntil = System.currentTimeMillis() + container.passcode.lockoutRemainingMillis()
         ProcessLifecycleOwner.get().lifecycle.addObserver(lifecycleObserver)
+        openDatabase()
 
         setContent {
             RandWiseTheme {
+                val dbOk = databaseOk
                 if (locked) {
                     val kind by container.passcode.kind.collectAsStateWithLifecycle()
                     LockScreen(
@@ -88,8 +94,13 @@ class MainActivity : FragmentActivity() {
                         onBiometric = ::authenticateBiometric,
                         onForgot = ::eraseAndRestart,
                     )
-                } else {
+                } else if (dbOk == false) {
+                    DataUnavailableScreen(onRetry = ::openDatabase, onErase = ::eraseAndRestart)
+                } else if (dbOk == true) {
                     RandWiseRoot(container)
+                } else {
+                    // Opening takes milliseconds; show the canvas rather than a half-loaded app.
+                    AuroraBackground()
                 }
             }
         }
@@ -163,6 +174,11 @@ class MainActivity : FragmentActivity() {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) builder.setNegativeButtonText(getString(R.string.cancel))
         }
         prompt.authenticate(builder.build())
+    }
+
+    private fun openDatabase() {
+        databaseOk = null
+        lifecycleScope.launch { databaseOk = container.openDatabase() }
     }
 
     private fun eraseAndRestart() {

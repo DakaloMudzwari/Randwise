@@ -4,6 +4,9 @@ import com.randwise.app.core.Money
 import com.randwise.app.domain.Analysis
 import com.randwise.app.domain.FinanceSnapshot
 import com.randwise.app.domain.MerchantText
+import com.randwise.app.domain.engine.BehaviorReport
+import com.randwise.app.domain.engine.PlanLine
+import com.randwise.app.domain.engine.SpendingProfile
 import java.time.temporal.ChronoUnit
 
 /**
@@ -64,6 +67,38 @@ object ContextBuilder {
             emergencyTargetMonths = a.emergency.targetMonths,
             debts = debts,
             detectedInsights = a.behavior.insights.map { "${it.title}: ${it.body}" },
+        )
+    }
+
+    /** Check-up facts: three months of category and merchant totals (merchant first word only), plus the baseline plan. */
+    fun checkup(p: SpendingProfile, baseline: List<PlanLine>, behavior: BehaviorReport, currency: String): CheckupFacts {
+        val planByCat = baseline.associateBy { it.categoryId }
+        return CheckupFacts(
+            currency = currency,
+            today = p.today.toString(),
+            monthsCovered = p.monthsCovered,
+            daysOfData = p.daysOfData,
+            monthlyIncomeMinor = p.monthlyIncome,
+            plannedSavingsMinor = p.plannedSavingsMonthly,
+            availableForBudgetMinor = p.availableForBudget,
+            monthlySpendMinor = p.monthlySpend,
+            typicalSpendMinor = p.typicalSpend,
+            uncategorisedTypicalMinor = p.uncategorisedTypical,
+            categories = p.categories.take(15).map { t ->
+                val plan = planByCat[t.category.id]
+                CategoryTrendFact(
+                    category = t.category.name,
+                    essential = t.essential,
+                    monthsMinor = t.months,
+                    typicalMinor = t.typical,
+                    suggestedLimitMinor = plan?.limit,
+                    suggestedSavingMinor = plan?.let { (t.typical - it.limit).coerceAtLeast(0) },
+                )
+            },
+            merchants = p.merchants.map { MerchantFact(it.label, it.total, it.visits, it.categoryName) },
+            feeCount = behavior.feeCount,
+            feeTotalMinor = behavior.feeTotal,
+            detectedInsights = behavior.insights.map { "${it.title}: ${it.body}" },
         )
     }
 

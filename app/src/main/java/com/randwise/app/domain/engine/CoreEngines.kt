@@ -25,7 +25,9 @@ object BillSchedule {
         val out = mutableListOf<BillOccurrence>()
         for (bill in bills.filter { it.isConfirmed }) {
             val dueDates = PayCycle.dueDatesBetween(bill, cycle.start, cycle.end).distinct().sorted()
-            var payments = cycleTx.count { MerchantText.matches(it.merchant, bill.merchantPattern) }
+            var payments = cycleTx.count { tx ->
+                MerchantText.matches(tx.merchant, bill.merchantPattern) || paysByAmount(tx, bill, dueDates)
+            }
             for (due in dueDates) {
                 out += BillOccurrence(bill, due, paid = payments > 0)
                 if (payments > 0) payments--
@@ -33,6 +35,15 @@ object BillSchedule {
         }
         return out.sortedBy { it.dueDate }
     }
+
+    /**
+     * Bills typed at onboarding ("Insurance") can't name the merchant ("DEBIT ORDER DISCOVERY HEALTH"), but a debit
+     * order is the same amount on about the same day: within 2% of the bill and 5 days of a due date counts.
+     */
+    private fun paysByAmount(tx: Transaction, bill: RecurringBill, dueDates: List<LocalDate>): Boolean =
+        bill.expectedAmountMinor > 0 &&
+            kotlin.math.abs(tx.amountMinor - bill.expectedAmountMinor) * 50 <= bill.expectedAmountMinor &&
+            dueDates.any { kotlin.math.abs(tx.date - it.toEpochDay()) <= 5 }
 
     fun isBillPayment(tx: Transaction, bills: List<RecurringBill>): Boolean =
         tx.type == TxType.EXPENSE && bills.any { it.isConfirmed && MerchantText.matches(tx.merchant, it.merchantPattern) }
